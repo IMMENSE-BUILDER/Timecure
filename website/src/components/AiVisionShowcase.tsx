@@ -4,7 +4,9 @@ import {
   CheckCircle2,
   Cpu,
   FileImage,
+  Loader2,
   MessageSquareText,
+  Send,
   Sparkles,
   Terminal,
   Wrench,
@@ -94,7 +96,37 @@ export const AiVisionShowcase: React.FC<AiVisionShowcaseProps> = ({
   onSelectModel,
 }) => {
   const [scenario, setScenario] = useState<ScenarioId>('timetable');
+  const [livePrompt, setLivePrompt] = useState(
+    'Plan a 6:30 AM college morning wake-up + OS study sprint'
+  );
+  const [liveLoading, setLiveLoading] = useState(false);
+  const [liveReply, setLiveReply] = useState<string | null>(null);
+  const [liveError, setLiveError] = useState<string | null>(null);
   const current = SCENARIOS[scenario];
+
+  const runLiveCoach = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!livePrompt.trim() || liveLoading) return;
+    setLiveLoading(true);
+    setLiveError(null);
+    try {
+      const resp = await fetch('/api/coach', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: selectedModel, prompt: livePrompt.trim() }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        setLiveError(data.error || `HTTP ${resp.status}`);
+      } else {
+        setLiveReply(data.reply || 'No reply');
+      }
+    } catch {
+      setLiveError('Connect on deployed Vercel URL to invoke server-side gateway.');
+    } finally {
+      setLiveLoading(false);
+    }
+  };
 
   return (
     <div
@@ -304,6 +336,81 @@ export const AiVisionShowcase: React.FC<AiVisionShowcaseProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Live Server-Side Vercel Gateway Coach Bar (Key stays encrypted in Vercel Env) */}
+      <form
+        onSubmit={runLiveCoach}
+        className="mt-5 rounded-2xl p-4"
+        style={{
+          backgroundColor: 'var(--tc-surface)',
+          border: '1px solid var(--tc-outline-variant)',
+        }}
+      >
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold">
+          <span style={{ color: 'var(--tc-primary)' }}>
+            Live Server-Side Coach Test ({selectedModel})
+          </span>
+          <span
+            className="font-mono-tech text-[10px]"
+            style={{ color: 'var(--tc-on-surface-variant)' }}
+          >
+            Key isolated server-side in Vercel Env (/api/coach)
+          </span>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            type="text"
+            value={livePrompt}
+            onChange={(e) => setLivePrompt(e.target.value)}
+            maxLength={280}
+            placeholder="Ask Timecure AI to plan your morning alarm or study block..."
+            className="flex-1 rounded-xl px-3.5 py-2.5 text-xs outline-none"
+            style={{
+              backgroundColor: 'var(--tc-surface-low)',
+              color: 'var(--tc-on-surface)',
+              border: '1px solid var(--tc-outline-variant)',
+            }}
+          />
+          <button
+            type="submit"
+            disabled={liveLoading}
+            className="tc-pressable inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-xs font-bold disabled:opacity-60"
+            style={{
+              backgroundColor: 'var(--tc-primary)',
+              color: 'var(--tc-on-primary)',
+            }}
+          >
+            {liveLoading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Send className="h-3.5 w-3.5" />
+            )}
+            Ask Live Model
+          </button>
+        </div>
+        {liveReply && (
+          <div
+            className="mt-3 rounded-xl p-3 text-xs leading-relaxed"
+            style={{
+              backgroundColor: 'var(--tc-primary-container)',
+              color: 'var(--tc-on-primary-container)',
+            }}
+          >
+            {liveReply}
+          </div>
+        )}
+        {liveError && (
+          <div
+            className="mt-3 rounded-xl p-3 text-xs"
+            style={{
+              backgroundColor: 'var(--tc-surface-high)',
+              color: 'var(--tc-tertiary)',
+            }}
+          >
+            {liveError}
+          </div>
+        )}
+      </form>
     </div>
   );
 };

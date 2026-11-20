@@ -34,7 +34,14 @@ class PreferencesManager(context: Context) {
 
     var apiKey: String
         get() = prefs.getString(KEY_API_KEY, null)?.takeIf { it.isNotBlank() } ?: BuildConfig.AI_GATEWAY_API_KEY
-        set(value) = prefs.edit().putString(KEY_API_KEY, value.trim()).apply()
+        set(value) {
+            val trimmed = value.trim()
+            if (trimmed.isEmpty() || trimmed == BuildConfig.AI_GATEWAY_API_KEY) {
+                prefs.edit().remove(KEY_API_KEY).apply()
+            } else {
+                prefs.edit().putString(KEY_API_KEY, trimmed).apply()
+            }
+        }
 
     var modelName: String
         get() = prefs.getString(KEY_MODEL_NAME, null)?.takeIf { it.isNotBlank() } ?: BuildConfig.AI_MODEL

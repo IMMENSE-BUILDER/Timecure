@@ -6,13 +6,20 @@ plugins {
   alias(libs.plugins.kotlin.serialization)
 }
 
-// Secrets live in the git-ignored local.properties, never in source.
+// Secrets live in git-ignored local.properties, never in source control.
+// Public builds intentionally omit AI_GATEWAY_API_KEY so compiled APKs never leak credentials.
+// Pass `-PincludeLocalSecrets=true` ONLY for private USB deploys to your personal device.
 val localProps = Properties().apply {
   val f = rootProject.file("local.properties")
   if (f.exists()) f.inputStream().use { load(it) }
 }
-fun secret(name: String, fallback: String = ""): String =
+val includeLocalSecrets = providers.gradleProperty("includeLocalSecrets")
+  .map { it.equals("true", ignoreCase = true) }
+  .getOrElse(false)
+fun propOrLocal(name: String, fallback: String = ""): String =
   (localProps.getProperty(name) ?: fallback).replace("\\", "\\\\").replace("\"", "\\\"")
+fun privateSecret(name: String): String =
+  if (includeLocalSecrets) propOrLocal(name, "") else ""
 
 android {
   namespace = "com.timecure.app"
@@ -24,12 +31,12 @@ android {
     versionCode = 2
     versionName = "2.0"
 
-    buildConfigField("String", "AI_GATEWAY_API_KEY", "\"${secret("AI_GATEWAY_API_KEY")}\"")
+    buildConfigField("String", "AI_GATEWAY_API_KEY", "\"${privateSecret("AI_GATEWAY_API_KEY")}\"")
     buildConfigField(
       "String", "AI_GATEWAY_URL",
-      "\"${secret("AI_GATEWAY_URL", "https://ai-gateway.vercel.sh/v1/chat/completions")}\""
+      "\"${propOrLocal("AI_GATEWAY_URL", "https://ai-gateway.vercel.sh/v1/chat/completions")}\""
     )
-    buildConfigField("String", "AI_MODEL", "\"${secret("AI_MODEL", "minimax/minimax-m3.1-flash")}\"")
+    buildConfigField("String", "AI_MODEL", "\"${propOrLocal("AI_MODEL", "minimax/minimax-m3.1-flash")}\"")
   }
 
   buildTypes {

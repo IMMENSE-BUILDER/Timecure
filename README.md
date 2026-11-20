@@ -24,10 +24,11 @@ adb install -r Timecure.apk
    AI_GATEWAY_URL=https://ai-gateway.vercel.sh/v1/chat/completions
    AI_MODEL=minimax/minimax-m3.1-flash
    ```
-2. Run unit tests & build the APK:
+2. Run unit tests & build a **keyless** redistributable APK (add your key later inside **Settings -> Vercel AI Gateway**):
    ```bash
    ./gradlew testDebugUnitTest assembleDebug
    ```
+   *(For private USB deployment to your own device only, pass `-PincludeLocalSecrets=true` and never publish the resulting APK.)*
 
 ---
 
