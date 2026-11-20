@@ -1,4 +1,4 @@
-# Timecure v2.0 — Cognitive Wake-Up Alarm, Location Tasks & Server-Side AI
+# Timecure — Cognitive Wake-Up Alarm, Location Tasks & Server-Side AI
 
 **Interactive Website (Touch-Simulated Screens):** [https://timecure.vercel.app](https://timecure.vercel.app)  
 **Latest Android APK:** [Download Timecure.apk](https://github.com/IMMENSE-BUILDER/Timecure/releases/latest/download/Timecure.apk)

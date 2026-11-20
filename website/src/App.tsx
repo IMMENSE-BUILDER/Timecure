@@ -117,7 +117,7 @@ export function App() {
                 className="font-mono-tech text-[10px]"
                 style={{ color: 'var(--tc-on-surface-variant)' }}
               >
-                v2.0 • Android M3
+                Android • Material 3
               </div>
             </div>
           </a>
@@ -711,7 +711,7 @@ export function App() {
                     }}
                   >
                     <Download className="h-4 w-4" />
-                    Download Timecure.apk (v2.0)
+                    Download Timecure.apk
                   </a>
                   <a
                     href={REPO_URL}
