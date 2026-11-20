@@ -28,9 +28,58 @@ data class Alarm(
     val volume: Int = 100,
     val vibrate: Boolean = true,
     /** When true, schedules a 5-minute anti-relapse wake check after solving. */
-    val wakeCheckEnabled: Boolean = false
+    val wakeCheckEnabled: Boolean = false,
+    /** Gradual volume ramp duration in seconds (0 = Off, 15, 30, 60, 120, 300). */
+    val gentleWakeSeconds: Int = 30,
+    /** Voice reminder speaking current time while ringing. */
+    val timeReminderEnabled: Boolean = false,
+    /** Voice reminder speaking live local weather while ringing. */
+    val weatherReminderEnabled: Boolean = false,
+    /** Voice reminder speaking alarm label / morning goal while ringing. */
+    val labelReminderEnabled: Boolean = false,
+    /** Hardware DSP LoudnessEnhancer gain boost (+9 dB) for deep sleepers. */
+    val extraLoudEnabled: Boolean = false,
+    /** Configurable snooze settings (interval + max snooze count, 0 = unlimited). */
+    val snoozeEnabled: Boolean = true,
+    val snoozeIntervalMinutes: Int = 5,
+    val snoozeMaxCount: Int = 3,
+    /** Built-in quote preset id or local file:// gallery photo URI. */
+    val wallpaperUri: String = "preset:yesterday_tomorrow",
+    /** JSON-encoded ordered list of up to 5 customizable Wake-up Missions. */
+    val wakeMissionsJson: String = "",
+    /** Follow-up Wake-Up Check delay after dismissing (minutes: 1, 2, 3, 5, etc.). */
+    val wakeCheckDelayMinutes: Int = 2,
+    /** Countdown window on Wake-Up Check popup ("3, 2, 1" -> seconds). */
+    val wakeCheckCountdownSeconds: Int = 15,
+    /** When true, blocks power-off menu until alarm + wake-up check confirm you are awake. */
+    val preventPowerOff: Boolean = false
 ) {
     val isRepeating: Boolean get() = daysOfWeek.isNotEmpty()
+
+    val wakeMissions: List<WakeMissionConfig>
+        get() = WakeMissionConfig.decodeList(wakeMissionsJson)
+
+    val wakeCheckSummary: String
+        get() = if (!wakeCheckEnabled) "Off"
+        else "$wakeCheckDelayMinutes min • ${wakeCheckCountdownSeconds}s"
+
+    val preventPowerOffSummary: String
+        get() = if (preventPowerOff) "On" else "Off"
+
+    val gentleWakeSummary: String
+        get() = when {
+            gentleWakeSeconds <= 0 -> "Off"
+            gentleWakeSeconds < 60 -> "$gentleWakeSeconds seconds"
+            gentleWakeSeconds == 60 -> "1 minute"
+            else -> "${gentleWakeSeconds / 60} minutes"
+        }
+
+    val snoozeSummary: String
+        get() = when {
+            !snoozeEnabled -> "Off"
+            snoozeMaxCount <= 0 -> "$snoozeIntervalMinutes min, unlimited"
+            else -> "$snoozeIntervalMinutes min, $snoozeMaxCount times"
+        }
 
     val formattedTime: String
         get() {

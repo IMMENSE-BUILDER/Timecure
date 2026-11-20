@@ -15,7 +15,7 @@ class ChallengeRepository(
     /**
      * Local questions are instant and deterministically verified. The AI supplies personalized
      * reasoning puzzles for AI Coach (and occasionally in Mixed mode), and any failure degrades
-     * cleanly to a local challenge while cooling down AI calls for 15 minutes.
+     * cleanly to a local challenge while cooling down AI calls briefly.
      */
     suspend fun next(
         category: ChallengeCategory,
@@ -36,12 +36,10 @@ class ChallengeRepository(
         if (effective == ChallengeCategory.GOAL_AFFIRMATION && aiAvailable()) {
             when (val r = ai.generate(difficulty, goal)) {
                 is AiResult.Success -> {
-                    prefs.lastAiStatus = "OK — AI challenge generated (${prefs.modelName})"
                     prefs.aiBlockedUntil = 0L
                     return r.challenge
                 }
                 is AiResult.Failure -> {
-                    prefs.lastAiStatus = r.reason
                     prefs.aiBlockedUntil = System.currentTimeMillis() + AI_COOLDOWN_MS
                 }
             }
@@ -53,10 +51,9 @@ class ChallengeRepository(
         prefs.aiBlockedUntil = 0L
     }
 
-    private fun aiAvailable(): Boolean =
-        prefs.aiEnabled && prefs.apiKey.isNotBlank() && System.currentTimeMillis() >= prefs.aiBlockedUntil
+    private fun aiAvailable(): Boolean = System.currentTimeMillis() >= prefs.aiBlockedUntil
 
     private companion object {
-        const val AI_COOLDOWN_MS = 15 * 60 * 1000L
+        const val AI_COOLDOWN_MS = 3 * 60 * 1000L
     }
 }

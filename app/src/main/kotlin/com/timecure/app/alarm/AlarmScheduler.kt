@@ -32,6 +32,7 @@ class AlarmScheduler(private val context: Context) {
         cancelPending(alarmId, ACTION_ALARM_TRIGGER, alarmId.toInt())
         cancelRering(alarmId)
         cancelWakeCheck(alarmId)
+        cancelSnooze(alarmId)
     }
 
     /** Escalating re-ring: first miss = 2 minutes, every later miss = 5 minutes. */
@@ -56,21 +57,37 @@ class AlarmScheduler(private val context: Context) {
         cancelPending(alarmId, ACTION_WAKE_CHECK, wakeCheckCode(alarmId))
     }
 
+    fun scheduleSnooze(alarmId: Long, delayMinutes: Int, snoozesUsed: Int) {
+        val trigger = System.currentTimeMillis() + delayMinutes.coerceIn(1, 60) * 60_000L
+        Log.i(TAG, "Snooze #$snoozesUsed for alarm $alarmId in $delayMinutes min")
+        setClock(
+            trigger,
+            broadcast(alarmId, ACTION_SNOOZE_TRIGGER, 0, snoozeCode(alarmId), snoozesUsed = snoozesUsed)
+        )
+    }
+
+    fun cancelSnooze(alarmId: Long) {
+        cancelPending(alarmId, ACTION_SNOOZE_TRIGGER, snoozeCode(alarmId))
+    }
+
     private fun reringCode(alarmId: Long) = (alarmId + RERING_OFFSET).toInt()
     private fun wakeCheckCode(alarmId: Long) = (alarmId + WAKE_CHECK_OFFSET).toInt()
+    private fun snoozeCode(alarmId: Long) = (alarmId + SNOOZE_OFFSET).toInt()
 
     private fun broadcast(
         alarmId: Long,
         action: String,
         count: Int,
         requestCode: Int,
-        wakeCheck: Boolean = false
+        wakeCheck: Boolean = false,
+        snoozesUsed: Int = 0
     ): PendingIntent {
         val intent = Intent(context, AlarmReceiver::class.java).apply {
             this.action = action
             putExtra(EXTRA_ALARM_ID, alarmId)
             putExtra(EXTRA_RERING_COUNT, count)
             putExtra(EXTRA_WAKE_CHECK, wakeCheck)
+            putExtra(EXTRA_SNOOZES_USED, snoozesUsed)
         }
         return PendingIntent.getBroadcast(
             context, requestCode, intent,
@@ -110,13 +127,16 @@ class AlarmScheduler(private val context: Context) {
         private const val TAG = "AlarmScheduler"
         private const val RERING_OFFSET = 100_000L
         private const val WAKE_CHECK_OFFSET = 200_000L
+        private const val SNOOZE_OFFSET = 30_000L
 
         const val ACTION_ALARM_TRIGGER = "com.timecure.app.ALARM_TRIGGER"
         const val ACTION_RERING_TRIGGER = "com.timecure.app.RERING_TRIGGER"
         const val ACTION_WAKE_CHECK = "com.timecure.app.WAKE_CHECK"
+        const val ACTION_SNOOZE_TRIGGER = "com.timecure.app.SNOOZE_TRIGGER"
         const val EXTRA_ALARM_ID = "extra_alarm_id"
         const val EXTRA_RERING_COUNT = "extra_rering_count"
         const val EXTRA_WAKE_CHECK = "extra_wake_check"
+        const val EXTRA_SNOOZES_USED = "extra_snoozes_used"
 
         /** Negative id marks a test simulation: it never re-rings or logs stats. */
         const val TEST_ALARM_ID = -2L

@@ -91,7 +91,6 @@ import java.util.Locale
 @Composable
 fun AiAssistantSheet(
     agent: TimecureAiAgent,
-    modelName: String,
     onDismiss: () -> Unit,
     onOpenFocusTab: () -> Unit,
     onThemeChanged: (ThemeMode) -> Unit,
@@ -109,8 +108,9 @@ fun AiAssistantSheet(
         mutableStateListOf(
             AiChatMessage(
                 isUser = false,
-                text = "Snap or upload your timetable, routine, study notes, or goals — I'll analyze the image with Vision, build a structured task & technique table, and set alarms or Pomodoro sessions for you.",
-                sourceLabel = "$modelName • Vision + Tools"
+                text = "Snap or upload your timetable, routine, study notes, or goals — I'll analyze the image, build a structured task & technique table, and set alarms or Pomodoro sessions for you.",
+                sourceLabel = "",
+                isPlaceholder = true
             )
         )
     }
@@ -200,7 +200,8 @@ fun AiAssistantSheet(
                 text = result.reply,
                 toolBadges = result.toolBadges,
                 generatedTasks = result.generatedTasks,
-                sourceLabel = if (result.usedLiveModel) "$modelName • Vision + Tool" else "On-device fallback"
+                sourceLabel = if (result.usedLiveModel) "" else "Offline mode",
+                isPlaceholder = !result.usedLiveModel && result.toolBadges.isEmpty()
             )
             result.updatedThemeMode?.let(onThemeChanged)
             result.updatedPalette?.let(onPaletteChanged)
@@ -231,9 +232,9 @@ fun AiAssistantSheet(
                 Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Timecure AI Vision & Tools", style = MaterialTheme.typography.titleMedium)
+                    Text("Timecure AI", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        text = "$modelName • Scan timetables, notes & set alarms",
+                        text = "Scan timetables, notes & manage your day",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -401,7 +402,7 @@ fun AiAssistantSheet(
                             CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                             Spacer(Modifier.width(10.dp))
                             Text(
-                                "Analyzing with $modelName...",
+                                "Timecure AI is thinking...",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

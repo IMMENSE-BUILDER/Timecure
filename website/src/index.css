@@ -135,11 +135,31 @@
   animation: tc-sweep 380ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
+@keyframes tc-touch-ripple {
+  0% {
+    transform: translate(-50%, -50%) scale(0.2);
+    opacity: 0.9;
+  }
+  70% {
+    transform: translate(-50%, -50%) scale(1.15);
+    opacity: 0.45;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.7);
+    opacity: 0;
+  }
+}
+
+.animate-tc-touch-ripple {
+  animation: tc-touch-ripple 440ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-tc-orbit,
   .animate-tc-pulse,
   .animate-tc-shake,
-  .animate-tc-sweep {
+  .animate-tc-sweep,
+  .animate-tc-touch-ripple {
     animation: none !important;
   }
 }

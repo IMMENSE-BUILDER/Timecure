@@ -38,28 +38,40 @@ class AlarmService : Service() {
         val alarmId = intent.getLongExtra(AlarmScheduler.EXTRA_ALARM_ID, -1L)
         val rerings = intent.getIntExtra(AlarmScheduler.EXTRA_RERING_COUNT, 0)
         val wakeCheck = intent.getBooleanExtra(AlarmScheduler.EXTRA_WAKE_CHECK, false)
+        val snoozesUsed = intent.getIntExtra(AlarmScheduler.EXTRA_SNOOZES_USED, 0)
 
         // Must reach foreground within 5 seconds, so post notification before any I/O.
-        startForeground(NOTIFICATION_ID, buildNotification(alarmId, rerings, wakeCheck))
+        startForeground(NOTIFICATION_ID, buildNotification(alarmId, rerings, wakeCheck, snoozesUsed))
 
         val container = (application as TimecureApp).container
         scope.launch {
             val alarm = if (alarmId > 0) container.alarmRepository.getById(alarmId) else null
-            Log.i(TAG, "Ringing alarm=$alarmId rerings=$rerings wakeCheck=$wakeCheck")
+            Log.i(TAG, "Ringing alarm=$alarmId rerings=$rerings wakeCheck=$wakeCheck snoozes=$snoozesUsed")
             container.soundManager.start(
                 toneUri = alarm?.toneUri.orEmpty(),
                 vibrate = alarm?.vibrate ?: true,
                 rerings = rerings,
                 startMs = alarm?.toneStartMs ?: 0L,
-                endMs = alarm?.toneEndMs ?: 0L
+                endMs = alarm?.toneEndMs ?: 0L,
+                volumePercent = alarm?.volume ?: 100,
+                gentleWakeSeconds = alarm?.gentleWakeSeconds ?: 0,
+                extraLoud = alarm?.extraLoudEnabled ?: false
             )
+            if (alarm != null && !wakeCheck) {
+                container.voiceAssistant.startRingingLoop(this@AlarmService, alarm)
+            }
         }
         return START_REDELIVER_INTENT
     }
 
-    private fun buildNotification(alarmId: Long, rerings: Int, wakeCheck: Boolean): Notification {
+    private fun buildNotification(
+        alarmId: Long,
+        rerings: Int,
+        wakeCheck: Boolean,
+        snoozesUsed: Int
+    ): Notification {
         val open = PendingIntent.getActivity(
-            this, NOTIFICATION_ID, AlarmActions.ringingIntent(this, alarmId, rerings, wakeCheck),
+            this, NOTIFICATION_ID, AlarmActions.ringingIntent(this, alarmId, rerings, wakeCheck, snoozesUsed),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val title = if (wakeCheck) "Timecure — Still awake?" else "Timecure — Wake up"
@@ -82,7 +94,9 @@ class AlarmService : Service() {
     }
 
     override fun onDestroy() {
-        (application as TimecureApp).container.soundManager.stop()
+        val container = (application as TimecureApp).container
+        container.voiceAssistant.stop()
+        container.soundManager.stop()
         scope.cancel()
         wakeLock?.takeIf { it.isHeld }?.release()
         wakeLock = null

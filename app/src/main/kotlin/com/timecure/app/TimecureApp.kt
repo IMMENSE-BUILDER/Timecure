@@ -24,6 +24,8 @@ class TimecureApp : Application() {
             container.alarmRepository.refresh()
             container.pomodoroRepository.refresh()
             container.taskPlanRepository.refresh()
+            container.smartTaskRepository.refreshAll()
+            container.taskScheduler.syncAll(container.smartTaskRepository.getAllTasks())
         }
     }
 
@@ -49,10 +51,30 @@ class TimecureApp : Application() {
                 setShowBadge(false)
             }
         )
+
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_TASK_ALERT_ID, "Task alerts & places", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "High-priority alerts when arriving at marked locations or hitting scheduled task times."
+                enableVibration(true)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                setBypassDnd(true)
+            }
+        )
+
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_LOCATION_RADAR_ID, "Location radar", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Background geofence radar status while location-based tasks are active."
+                setSound(null, null)
+                enableVibration(false)
+                setShowBadge(false)
+            }
+        )
     }
 
     companion object {
         const val CHANNEL_ALARM_ID = "timecure_alarm_v2"
         const val CHANNEL_POMODORO_ID = "timecure_pomodoro_v1"
+        const val CHANNEL_TASK_ALERT_ID = "timecure_task_alert_v1"
+        const val CHANNEL_LOCATION_RADAR_ID = "timecure_location_radar_v1"
     }
 }

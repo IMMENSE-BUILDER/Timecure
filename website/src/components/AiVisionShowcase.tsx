@@ -12,11 +12,6 @@ import {
   Wrench,
 } from 'lucide-react';
 
-interface AiVisionShowcaseProps {
-  selectedModel: string;
-  onSelectModel: (model: string) => void;
-}
-
 type ScenarioId = 'timetable' | 'prompt' | 'study';
 
 const SCENARIOS: Record<
@@ -91,10 +86,7 @@ const SCENARIOS: Record<
   },
 };
 
-export const AiVisionShowcase: React.FC<AiVisionShowcaseProps> = ({
-  selectedModel,
-  onSelectModel,
-}) => {
+export const AiVisionShowcase: React.FC = () => {
   const [scenario, setScenario] = useState<ScenarioId>('timetable');
   const [livePrompt, setLivePrompt] = useState(
     'Plan a 6:30 AM college morning wake-up + OS study sprint'
@@ -113,7 +105,7 @@ export const AiVisionShowcase: React.FC<AiVisionShowcaseProps> = ({
       const resp = await fetch('/api/coach', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: selectedModel, prompt: livePrompt.trim() }),
+        body: JSON.stringify({ prompt: livePrompt.trim() }),
       });
       const data = await resp.json();
       if (!resp.ok) {
@@ -143,46 +135,26 @@ export const AiVisionShowcase: React.FC<AiVisionShowcaseProps> = ({
             style={{ color: 'var(--tc-primary)' }}
           >
             <Sparkles className="h-4 w-4" />
-            Vercel AI Gateway • Multimodal & Agentic
+            Server-Side Timecure AI • Multimodal & Agentic
           </div>
           <h3 className="mt-1 text-2xl sm:text-3xl font-bold tracking-tight">
             Snap your timetable. Command your whole routine.
           </h3>
           <p className="mt-2 max-w-2xl text-sm" style={{ color: 'var(--tc-on-surface-variant)' }}>
-            Powered by <strong>Vercel AI Gateway</strong> with instant one-tap switching between{' '}
-            <code className="font-mono-tech text-xs">minimax/minimax-m3.1-flash</code> and{' '}
-            <code className="font-mono-tech text-xs">meta/muse-ember</code>, editable System Instructions, and 7 native Android function-calling tools.
+            Powered by server-side multimodal reasoning &amp; vision with zero client API keys or manual setup, plus 7 native Android function-calling tools.
           </p>
         </div>
 
-        {/* Model Switcher Pill */}
         <div
-          className="inline-flex rounded-2xl p-1"
+          className="inline-flex items-center gap-1.5 rounded-2xl px-3.5 py-2 text-xs font-bold"
           style={{
             backgroundColor: 'var(--tc-surface)',
             border: '1px solid var(--tc-outline-variant)',
+            color: 'var(--tc-primary)',
           }}
         >
-          {[
-            { id: 'minimax/minimax-m3.1-flash', name: 'MiniMax M3.1 Flash' },
-            { id: 'meta/muse-ember', name: 'Meta Muse Ember' },
-          ].map((m) => {
-            const active = selectedModel === m.id;
-            return (
-              <button
-                key={m.id}
-                onClick={() => onSelectModel(m.id)}
-                className="tc-pressable inline-flex cursor-pointer items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold"
-                style={{
-                  backgroundColor: active ? 'var(--tc-primary)' : 'transparent',
-                  color: active ? 'var(--tc-on-primary)' : 'var(--tc-on-surface-variant)',
-                }}
-              >
-                <Cpu className="h-3.5 w-3.5" />
-                {m.name}
-              </button>
-            );
-          })}
+          <Cpu className="h-3.5 w-3.5" />
+          Zero-Config Cloud AI
         </div>
       </div>
 
@@ -241,7 +213,7 @@ export const AiVisionShowcase: React.FC<AiVisionShowcaseProps> = ({
               >
                 {current.badge}
               </span>
-              <span className="font-mono-tech opacity-70">{selectedModel}</span>
+              <span className="font-mono-tech opacity-70">Vision + Tools</span>
             </div>
 
             <div
@@ -306,7 +278,7 @@ export const AiVisionShowcase: React.FC<AiVisionShowcaseProps> = ({
           <div className="mb-3 flex items-center justify-between border-b border-white/10 pb-2.5 text-[11px]">
             <span className="inline-flex items-center gap-2 font-semibold text-sky-300">
               <Terminal className="h-3.5 w-3.5" />
-              POST https://ai-gateway.vercel.sh/v1/chat/completions
+              POST https://timecure.vercel.app/api/ai
             </span>
             <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] text-emerald-300">
               200 OK
@@ -348,13 +320,13 @@ export const AiVisionShowcase: React.FC<AiVisionShowcaseProps> = ({
       >
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold">
           <span style={{ color: 'var(--tc-primary)' }}>
-            Live Server-Side Coach Test ({selectedModel})
+            Live Server-Side AI Coach Test
           </span>
           <span
             className="font-mono-tech text-[10px]"
             style={{ color: 'var(--tc-on-surface-variant)' }}
           >
-            Key isolated server-side in Vercel Env (/api/coach)
+            Zero-config server-side endpoint (/api/coach)
           </span>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">

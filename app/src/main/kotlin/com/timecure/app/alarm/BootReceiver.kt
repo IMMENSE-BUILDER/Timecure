@@ -21,6 +21,8 @@ class BootReceiver : BroadcastReceiver() {
                 container.alarmRepository.getAll()
                     .filter { it.isEnabled }
                     .forEach { container.alarmScheduler.schedule(it) }
+                container.smartTaskRepository.refreshAll()
+                container.taskScheduler.syncAll(container.smartTaskRepository.getAllTasks())
             } catch (e: Exception) {
                 Log.e(TAG, "Re-arm failed: ${e.message}")
             } finally {

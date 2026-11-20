@@ -3,17 +3,22 @@ package com.timecure.app.data.remote
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
+import com.timecure.app.BuildConfig
 import com.timecure.app.alarm.AlarmActions
 import com.timecure.app.alarm.AlarmScheduler
 import com.timecure.app.data.local.PreferencesManager
 import com.timecure.app.data.local.ThemeMode
 import com.timecure.app.data.repository.AlarmRepository
+import com.timecure.app.data.repository.SmartTaskRepository
 import com.timecure.app.data.repository.TaskPlanRepository
 import com.timecure.app.model.AiTaskItem
 import com.timecure.app.model.Alarm
 import com.timecure.app.model.ChallengeCategory
 import com.timecure.app.model.ChallengeDifficulty
 import com.timecure.app.model.PomodoroPreset
+import com.timecure.app.model.SavedPlace
+import com.timecure.app.model.SmartTask
+import com.timecure.app.model.TaskTriggerType
 import com.timecure.app.pomodoro.PomodoroEngine
 import com.timecure.app.ui.theme.AppThemePalette
 import kotlinx.coroutines.Dispatchers
@@ -37,7 +42,8 @@ data class AiChatMessage(
     val imagePreview: Bitmap? = null,
     val toolBadges: List<String> = emptyList(),
     val generatedTasks: List<AiTaskItem> = emptyList(),
-    val sourceLabel: String = ""
+    val sourceLabel: String = "",
+    val isPlaceholder: Boolean = false
 )
 
 data class AgentTurnResult(
@@ -52,15 +58,14 @@ data class AgentTurnResult(
 )
 
 /**
- * Multimodal + Tool-Calling AI Assistant powered by Vercel AI Gateway (minimax/minimax-m3.1-flash).
+ * Multimodal + Tool-Calling AI Assistant backed by Timecure's server-side AI endpoint.
  *
  * Supports:
  * - Native Vision input (photos of college timetables, study materials, handwritten goals, routines)
  *   encoded as OpenAI-compatible `image_url` data URIs.
- * - 6 real function tools: `create_alarm`, `toggle_alarm`, `delete_alarm`, `start_pomodoro`,
- *   `update_preferences`, and `save_task_table` (generates structured task tables with study
- *   techniques & suggested alarm times persisted in SQLite).
- * - Automatic on-device fallback if offline or gateway returns an auth error.
+ * - 7 autonomous tools: `create_alarm`, `save_task_table`, `toggle_alarm`, `delete_alarm`,
+ *   `start_pomodoro`, `update_preferences`, and `ultimate_morning_unlock`.
+ * - Quiet local command fallback only when genuinely offline.
  */
 class TimecureAiAgent(
     private val context: Context,
@@ -68,11 +73,13 @@ class TimecureAiAgent(
     private val alarmRepository: AlarmRepository,
     private val alarmScheduler: AlarmScheduler,
     private val pomodoroEngine: PomodoroEngine,
-    private val taskPlanRepository: TaskPlanRepository
+    private val taskPlanRepository: TaskPlanRepository,
+    private val smartTaskRepository: SmartTaskRepository
 ) {
     private val http = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .callTimeout(35, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(45, TimeUnit.SECONDS)
+        .callTimeout(55, TimeUnit.SECONDS)
         .build()
 
     private val jsonType = "application/json; charset=utf-8".toMediaType()
@@ -83,35 +90,57 @@ class TimecureAiAgent(
         recentHistory: List<AiChatMessage> = emptyList()
     ): AgentTurnResult = withContext(Dispatchers.IO) {
         val alarms = alarmRepository.getAll()
-        val liveAttempt = runLiveToolLoop(userText, imageDataUrl, recentHistory, alarms)
+        val studyPlan = taskPlanRepository.getAll()
+        val smartTasks = smartTaskRepository.getAllTasks()
+        val savedPlaces = smartTaskRepository.getAllPlaces()
+
+        val liveAttempt = runLiveToolLoop(
+            userText = userText,
+            imageDataUrl = imageDataUrl,
+            history = recentHistory,
+            alarms = alarms,
+            studyPlan = studyPlan,
+            smartTasks = smartTasks,
+            savedPlaces = savedPlaces
+        )
         if (liveAttempt.isSuccess) {
             return@withContext liveAttempt.getOrThrow()
         }
 
-        val reason = liveAttempt.exceptionOrNull()?.message ?: "Gateway unavailable"
-        Log.w(TAG, "Falling back to on-device router: $reason")
-        runLocalFallback(userText, imageDataUrl != null, reason)
+        val reason = liveAttempt.exceptionOrNull()?.message ?: "Offline"
+        Log.w(TAG, "Falling back to offline command parser: $reason")
+        runLocalFallback(userText, imageDataUrl != null)
     }
 
     private suspend fun runLiveToolLoop(
         userText: String,
         imageDataUrl: String?,
         history: List<AiChatMessage>,
-        alarms: List<Alarm>
+        alarms: List<Alarm>,
+        studyPlan: List<AiTaskItem>,
+        smartTasks: List<SmartTask>,
+        savedPlaces: List<SavedPlace>
     ): Result<AgentTurnResult> = runCatching {
-        val key = prefs.apiKey
-        val url = prefs.gatewayUrl
-        require(key.isNotBlank()) { "No API key configured" }
-        require(url.isNotBlank()) { "No gateway URL configured" }
-
         val messages = JSONArray().apply {
-            put(JSONObject().put("role", "system").put("content", buildSystemPrompt(alarms)))
-            history.takeLast(6).forEach { msg ->
-                put(JSONObject().put("role", if (msg.isUser) "user" else "assistant").put("content", msg.text))
-            }
+            put(
+                JSONObject()
+                    .put("role", "system")
+                    .put("content", buildSystemPrompt(alarms, studyPlan, smartTasks, savedPlaces))
+            )
+            history
+                .filter { !it.isPlaceholder && it.text.isNotBlank() }
+                .takeLast(12)
+                .forEach { msg ->
+                    put(
+                        JSONObject()
+                            .put("role", if (msg.isUser) "user" else "assistant")
+                            .put("content", msg.text)
+                    )
+                }
+
             if (imageDataUrl != null) {
                 val prompt = userText.ifBlank {
-                    "Analyze this image (timetable, routine, study notes, or goals). Call save_task_table to build a structured task & study technique plan, and suggest or set any helpful alarms."
+                    "Analyze this image carefully (timetable, routine, study notes, goals, or check-in photo) and take the most helpful action."
                 }
                 val contentParts = JSONArray().apply {
                     put(JSONObject().put("type", "text").put("text", prompt))
@@ -133,15 +162,45 @@ class TimecureAiAgent(
         var newTheme: ThemeMode? = null
         var newPalette: AppThemePalette? = null
         var newName: String? = null
+        var latestReply = ""
 
-        val firstMsg = callGateway(url, key, messages, includeTools = true)
-        val toolCalls = firstMsg.optJSONArray("tool_calls")
+        // Up to 2 tool-execution rounds, followed by a clean final response if tools ran in round 2
+        for (round in 0 until 2) {
+            val serverMsg = callServer(messages, includeTools = true)
+            val toolCalls = serverMsg.optJSONArray("tool_calls")
+            val contentText = stripThinkTags(serverMsg.optString("content"))
+            if (contentText.isNotBlank()) {
+                latestReply = contentText
+            }
 
-        if (toolCalls != null && toolCalls.length() > 0) {
-            messages.put(firstMsg)
+            if (toolCalls == null || toolCalls.length() == 0) {
+                if (latestReply.isBlank() && badges.isEmpty()) {
+                    error("AI service returned an empty response")
+                }
+                prefs.aiBlockedUntil = 0L
+                return@runCatching AgentTurnResult(
+                    reply = latestReply.ifBlank { "Done — updated ${badges.joinToString(", ")}." },
+                    toolBadges = badges,
+                    generatedTasks = createdTasks,
+                    usedLiveModel = true,
+                    openFocusTab = openFocus,
+                    updatedThemeMode = newTheme,
+                    updatedPalette = newPalette,
+                    updatedUserName = newName
+                )
+            }
+
+            // Append assistant message with its tool_calls for the next turn
+            messages.put(
+                JSONObject()
+                    .put("role", "assistant")
+                    .put("content", serverMsg.optString("content", ""))
+                    .put("tool_calls", toolCalls)
+            )
+
             for (i in 0 until toolCalls.length()) {
                 val tc = toolCalls.getJSONObject(i)
-                val tcId = tc.optString("id", "call_$i")
+                val tcId = tc.optString("id", "call_${round}_$i")
                 val fn = tc.getJSONObject("function")
                 val fnName = fn.getString("name")
                 val argsRaw = fn.optString("arguments", "{}")
@@ -163,37 +222,31 @@ class TimecureAiAgent(
                         .put("content", exec.toolResultJson)
                 )
             }
-
-            val finalMsg = runCatching { callGateway(url, key, messages, includeTools = false) }.getOrNull()
-            val finalReply = stripThinkTags(finalMsg?.optString("content").orEmpty())
-                .ifBlank { "Done! Completed: ${badges.joinToString(", ")}." }
-
-            prefs.lastAiStatus = "OK — ${if (imageDataUrl != null) "Vision + Tool" else "Tool"} via ${prefs.modelName}"
-            prefs.aiBlockedUntil = 0L
-            AgentTurnResult(
-                reply = finalReply,
-                toolBadges = badges,
-                generatedTasks = createdTasks,
-                usedLiveModel = true,
-                openFocusTab = openFocus,
-                updatedThemeMode = newTheme,
-                updatedPalette = newPalette,
-                updatedUserName = newName
-            )
-        } else {
-            val content = stripThinkTags(firstMsg.optString("content").orEmpty())
-                .ifBlank { "Let me know if you want me to schedule alarms, build a task table from a photo, or start a Pomodoro block." }
-            prefs.lastAiStatus = "OK — ${if (imageDataUrl != null) "Vision" else "Chat"} via ${prefs.modelName}"
-            prefs.aiBlockedUntil = 0L
-            AgentTurnResult(reply = content, toolBadges = emptyList(), usedLiveModel = true)
         }
+
+        // If round 2 also invoked tools, perform one final tool-free turn for a crisp natural summary
+        val finalMsg = runCatching { callServer(messages, includeTools = false) }.getOrNull()
+        val finalText = stripThinkTags(finalMsg?.optString("content").orEmpty())
+            .ifBlank { latestReply }
+            .ifBlank { "All set — ${badges.joinToString(", ")}." }
+
+        prefs.aiBlockedUntil = 0L
+        AgentTurnResult(
+            reply = finalText,
+            toolBadges = badges,
+            generatedTasks = createdTasks,
+            usedLiveModel = true,
+            openFocusTab = openFocus,
+            updatedThemeMode = newTheme,
+            updatedPalette = newPalette,
+            updatedUserName = newName
+        )
     }
 
-    private fun callGateway(url: String, key: String, messages: JSONArray, includeTools: Boolean): JSONObject {
+    private fun callServer(messages: JSONArray, includeTools: Boolean): JSONObject {
         val body = JSONObject().apply {
-            put("model", prefs.modelName)
-            put("temperature", 0.3)
-            put("max_tokens", 900)
+            put("temperature", 0.5)
+            put("max_tokens", 2048)
             put("messages", messages)
             if (includeTools) {
                 put("tools", buildToolSchemas())
@@ -201,22 +254,20 @@ class TimecureAiAgent(
             }
         }
         val req = Request.Builder()
-            .url(url)
-            .header("Authorization", "Bearer $key")
+            .url(BuildConfig.TIMECURE_AI_ENDPOINT)
             .post(body.toString().toRequestBody(jsonType))
             .build()
 
         http.newCall(req).execute().use { resp ->
             val text = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) {
-                val msg = VercelAiClient.describeHttpFailure(resp.code, text)
-                prefs.lastAiStatus = msg
-                error(msg)
+                error(VercelAiClient.describeHttpFailure(resp.code, text))
             }
-            return JSONObject(text)
-                .getJSONArray("choices")
-                .getJSONObject(0)
-                .getJSONObject("message")
+            val root = JSONObject(text)
+            if (root.has("content") || root.has("tool_calls")) {
+                return root
+            }
+            return root.getJSONArray("choices").getJSONObject(0).getJSONObject("message")
         }
     }
 
@@ -420,8 +471,7 @@ class TimecureAiAgent(
 
     private suspend fun runLocalFallback(
         userText: String,
-        hadImage: Boolean,
-        gatewayError: String
+        hadImage: Boolean
     ): AgentTurnResult {
         val parsed = parseLocalIntent(userText, prefs.defaultGoal, hadImage)
         val badges = mutableListOf<String>()
@@ -441,13 +491,10 @@ class TimecureAiAgent(
             if (res.updatedUserName != null) newName = res.updatedUserName
         }
 
-        val reply = when {
-            hadImage && createdTasks.isNotEmpty() ->
-                "Image attached, but live Vision on ${prefs.modelName} returned: $gatewayError.\n\nI created a starter structured routine table below so you can test the 1-tap Alarm & Pomodoro controls right away — update your Vercel key in Settings for live OCR & timetable Vision reading!"
-            badges.isNotEmpty() ->
-                "Executed directly (${badges.joinToString("; ")}).\n\nNote: Live ${prefs.modelName} returned: $gatewayError — update your Vercel key in Settings for cloud Vision & reasoning."
-            else ->
-                "Could not reach ${prefs.modelName} ($gatewayError). Try:\n• Upload a timetable photo & ask to build a task table\n• \"Set a 7:15 AM weekday alarm to get up for college\"\n• \"Start a 25m focus sprint for physics\" or \"Switch to Emerald theme\""
+        val reply = if (badges.isNotEmpty()) {
+            "You're currently offline, so I handled that locally (${badges.joinToString("; ")})."
+        } else {
+            "I couldn't reach Timecure AI right now — please check your internet connection and try again."
         }
 
         return AgentTurnResult(
@@ -462,20 +509,51 @@ class TimecureAiAgent(
         )
     }
 
-    private fun buildSystemPrompt(alarms: List<Alarm>): String {
+    private fun buildSystemPrompt(
+        alarms: List<Alarm>,
+        studyPlan: List<AiTaskItem>,
+        smartTasks: List<SmartTask>,
+        savedPlaces: List<SavedPlace>
+    ): String {
         val nowStr = SimpleDateFormat("EEEE, MMM d, yyyy h:mm a", Locale.getDefault()).format(Date())
+        val placesById = savedPlaces.associateBy { it.id }
+
         val alarmSummary = if (alarms.isEmpty()) "None" else alarms.joinToString("\n") {
             "- id=${it.id}: ${it.formattedTime} ${it.amPm} (${it.daysSummary}), enabled=${it.isEnabled}, goal=\"${it.goal}\""
         }
-        return """
-            ${prefs.aiSystemInstructions}
 
-            Active Model: ${prefs.modelName}
-            Current local time: $nowStr
-            User name: ${prefs.userName.ifBlank { "not set" }}
-            Default morning goal: ${prefs.defaultGoal}
-            Existing alarms:
+        val planSummary = if (studyPlan.isEmpty()) "None" else studyPlan.take(8).joinToString("\n") {
+            "- [${if (it.isCompleted) "x" else " "}] ${it.timeSlot}: ${it.taskText} (${it.technique})"
+        }
+
+        val taskSummary = if (smartTasks.isEmpty()) "None" else smartTasks.take(8).joinToString("\n") { t ->
+            val where = when (t.triggerType) {
+                TaskTriggerType.TIME -> "${t.formattedTime()} (${t.daysSummary})"
+                TaskTriggerType.LOCATION -> {
+                    val pName = t.placeId?.let { placesById[it]?.name } ?: "Marked place"
+                    "${t.geofenceMode.displayName} $pName (${t.radiusMeters}m)"
+                }
+            }
+            "- [${if (t.isCompleted) "x" else " "}] ${t.title} — $where, enabled=${t.isEnabled}"
+        }
+
+        return """
+            You are Timecure AI — the user's perceptive, sharp, human-sounding personal coach inside the Timecure Android app.
+            Style rules:
+            - Speak naturally like a smart, supportive human mentor: direct, warm, practical, never robotic or repetitive.
+            - Keep everyday replies tight (2-4 crisp sentences unless building a full study/routine breakdown).
+            - Never invent fake tool actions, never repeat generic capability menus unless asked what you can do, and never mention internal model names, API gateways, API keys, or internal tool names in your visible reply.
+
+            Live User Context:
+            - Current local time: $nowStr
+            - User name: ${prefs.userName.ifBlank { "not set" }}
+            - Default morning goal: ${prefs.defaultGoal}
+            - Alarms:
             $alarmSummary
+            - Active Smart Tasks (Time / Location):
+            $taskSummary
+            - Current AI Study Plan:
+            $planSummary
 
             Capabilities & rules:
             1. ULTIMATE FACE-WASH WAKE TEST (Vision): If the user scans or uploads a photo of their face and it appears as a freshly washed ("washed-up") morning face (e.g. wet/damp skin, water droplets, fresh post-wash appearance), they have passed the ultimate wake-up test. Immediately call `ultimate_morning_unlock` without requiring any answers — this silences/unlocks all alarms and clears all tasks — and congratulate them warmly.
@@ -483,16 +561,18 @@ class TimecureAiAgent(
                - Read every time slot, subject, deadline, or priority carefully using Vision.
                - Call `save_task_table` with a structured, actionable plan (exact time_slot, concrete task, evidence-based study technique like "Pomodoro 50/10", "Active Recall", "Feynman Method", or "Spaced Repetition", plus suggested alarm_hour & alarm_minute for key wake/start blocks).
                - If the user asks you to set alarms from the timetable, also call `create_alarm` directly!
-            3. For text requests, invoke the right tools (`create_alarm`, `toggle_alarm`, `delete_alarm`, `start_pomodoro`, `update_preferences`, `save_task_table`, `ultimate_morning_unlock`).
-            4. Keep replies crisp, encouraging, and grounded in the tools you executed.
+            3. When the user asks to create/toggle/delete alarms, launch Pomodoro focus sessions, or change their theme/name/goal, call the appropriate tools directly rather than just describing how.
+            4. When the user simply chats or asks for advice on sleep, focus, studying, or scheduling, answer intelligently using their real alarms and tasks above without calling unnecessary tools.
         """.trimIndent()
     }
 
     companion object {
         private const val TAG = "TimecureAiAgent"
 
-        fun stripThinkTags(raw: String): String =
-            raw.replace(Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE), "").trim()
+        fun stripThinkTags(raw: String): String = raw
+            .replace(Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("<think>[\\s\\S]*$", RegexOption.IGNORE_CASE), "")
+            .trim()
 
         fun parseDayCodes(arr: JSONArray?): Set<Int> {
             if (arr == null) return emptySet()

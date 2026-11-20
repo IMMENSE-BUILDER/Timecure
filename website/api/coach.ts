@@ -1,7 +1,11 @@
-const ALLOWED_MODELS = new Set([
-  'minimax/minimax-m3.1-flash',
-  'meta/muse-ember',
-]);
+const MODEL = 'minimax/minimax-m3.1-flash';
+
+function stripThinkTags(raw: string): string {
+  return raw
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<think>[\s\S]*$/gi, '')
+    .trim();
+}
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
@@ -12,16 +16,18 @@ export default async function handler(req: any, res: any) {
   const apiKey = process.env.AI_GATEWAY_API_KEY;
   if (!apiKey) {
     return res.status(503).json({
-      error: 'AI_GATEWAY_API_KEY is not configured in Vercel Environment Variables.',
+      error: 'AI service is not configured on the server.',
     });
   }
 
-  const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
-  const model = ALLOWED_MODELS.has(body.model || '')
-    ? (body.model as string)
-    : 'minimax/minimax-m3.1-flash';
-  const prompt = String(body.prompt || '').trim().slice(0, 300);
+  let body: any = {};
+  try {
+    body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
+  } catch {
+    return res.status(400).json({ error: 'Invalid JSON request body.' });
+  }
 
+  const prompt = String(body.prompt || '').trim().slice(0, 300);
   if (!prompt) {
     return res.status(400).json({ error: 'Prompt is required.' });
   }
@@ -34,14 +40,14 @@ export default async function handler(req: any, res: any) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model,
+        model: MODEL,
         temperature: 0.5,
-        max_tokens: 800,
+        max_tokens: 1400,
         messages: [
           {
             role: 'system',
             content:
-              'You are Timecure AI Coach (Android alarm + Pomodoro assistant). Reply concisely in 2-3 punchy sentences with exact alarm time/difficulty and focus technique matching the request. Do not wrap answer in <think> tags.',
+              'You are Timecure AI Coach (Android alarm + Pomodoro assistant). Reply concisely in 2-3 punchy, practical sentences with exact alarm time/difficulty and focus technique matching the request. Provide the answer directly in content without <think> blocks.',
           },
           { role: 'user', content: prompt },
         ],
@@ -51,20 +57,20 @@ export default async function handler(req: any, res: any) {
     const raw = await gatewayResp.text();
     if (!gatewayResp.ok) {
       return res.status(gatewayResp.status).json({
-        error: `Gateway returned HTTP ${gatewayResp.status}`,
+        error: `AI service returned HTTP ${gatewayResp.status}`,
       });
     }
 
     const parsed = JSON.parse(raw);
     const msg = parsed?.choices?.[0]?.message || {};
-    const contentRaw = String(msg.content || msg.reasoning || '');
-    const reply = contentRaw
-      .replace(/<think>[\s\S]*?<\/think>/gi, '')
-      .trim()
-      .slice(0, 600);
+    const reply = stripThinkTags(String(msg.content || '')).slice(0, 700);
 
-    return res.status(200).json({ model, reply });
+    if (!reply) {
+      return res.status(502).json({ error: 'AI service returned an empty reply.' });
+    }
+
+    return res.status(200).json({ reply });
   } catch {
-    return res.status(502).json({ error: 'Unable to reach Vercel AI Gateway.' });
+    return res.status(502).json({ error: 'Unable to reach AI service.' });
   }
 }

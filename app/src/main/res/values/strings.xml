@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Timecure</string>
+    <string name="power_off_guard_description">Prevents powering off your phone while a Timecure alarm or wake-up check is active until you prove you are awake.</string>
 </resources>

@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Snooze
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AssistChip
@@ -88,6 +89,7 @@ import com.timecure.app.ui.components.AnimatedCheckmarkBadge
 import com.timecure.app.ui.components.BreathingAuraRing
 import com.timecure.app.ui.components.StroopWordBanner
 import com.timecure.app.ui.components.rememberReducedMotion
+import com.timecure.app.ui.screens.addalarm.AlarmWallpaperBackdrop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -109,6 +111,8 @@ fun RingingScreen(
     elapsedSeconds: Int,
     wrongAttempts: Int,
     userName: String,
+    snoozesUsed: Int = 0,
+    onSnooze: (() -> Unit)? = null,
     onSubmitAnswer: (String) -> Boolean,
     onDone: () -> Unit,
     onLaunchFocusSprint: ((String) -> Unit)? = null,
@@ -181,12 +185,22 @@ fun RingingScreen(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
-            .statusBarsPadding()
-            .displayCutoutPadding()
-            .navigationBarsPadding()
-            .imePadding()
-            .padding(top = 4.dp)
     ) {
+        if (!practiceMode) {
+            AlarmWallpaperBackdrop(
+                wallpaperUri = alarm?.wallpaperUri.orEmpty(),
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .displayCutoutPadding()
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(top = 4.dp)
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -582,6 +596,34 @@ fun RingingScreen(
                 }
             }
 
+            val canSnooze = !practiceMode &&
+                !isAllSolved &&
+                !wakeCheck &&
+                !isTestSimulation &&
+                onSnooze != null &&
+                alarm?.snoozeEnabled == true &&
+                (alarm.snoozeMaxCount == 0 || snoozesUsed < alarm.snoozeMaxCount)
+
+            if (canSnooze) {
+                val snoozeLabel = if (alarm.snoozeMaxCount <= 0) {
+                    "Snooze ${alarm.snoozeIntervalMinutes}m"
+                } else {
+                    val left = (alarm.snoozeMaxCount - snoozesUsed).coerceAtLeast(1)
+                    "Snooze ${alarm.snoozeIntervalMinutes}m ($left left)"
+                }
+                FilledTonalButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onSnooze()
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
+                ) {
+                    Icon(Icons.Default.Snooze, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(snoozeLabel)
+                }
+            }
+
             if (!practiceMode && !isAllSolved) {
                 Text(
                     text = if (isTestSimulation)
@@ -595,11 +637,12 @@ fun RingingScreen(
                 )
             }
         }
+        }
     }
 }
 
 @Composable
-private fun VictoryCard(
+internal fun VictoryCard(
     goal: String,
     userName: String,
     elapsedSeconds: Int,

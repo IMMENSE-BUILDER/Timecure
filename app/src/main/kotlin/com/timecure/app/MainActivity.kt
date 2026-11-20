@@ -32,8 +32,14 @@ import com.timecure.app.model.Alarm
 import com.timecure.app.model.ChallengeCategory
 import com.timecure.app.model.ChallengeDifficulty
 import com.timecure.app.model.CognitiveChallenge
+import com.timecure.app.model.SmartTask
+import com.timecure.app.model.TaskTriggerType
 import com.timecure.app.model.WakeEvent
 import com.timecure.app.model.WakeStats
+import com.timecure.app.tasks.LocationGeoMath
+import com.timecure.app.tasks.LocationHelper
+import com.timecure.app.tasks.LocationRadarState
+import com.timecure.app.tasks.TaskTriggerActions
 import com.timecure.app.ui.components.AnimatedNavShell
 import com.timecure.app.ui.components.TopDestination
 import com.timecure.app.ui.screens.addalarm.AddEditAlarmScreen
@@ -44,6 +50,8 @@ import com.timecure.app.ui.screens.permissions.PermissionsScreen
 import com.timecure.app.ui.screens.pomodoro.PomodoroScreen
 import com.timecure.app.ui.screens.ringing.RingingScreen
 import com.timecure.app.ui.screens.settings.SettingsScreen
+import com.timecure.app.ui.screens.tasks.AddEditTaskScreen
+import com.timecure.app.ui.screens.tasks.TasksScreen
 import com.timecure.app.ui.theme.TimecureTheme
 import com.timecure.app.util.Permissions
 import kotlinx.coroutines.delay
@@ -53,6 +61,7 @@ import kotlinx.coroutines.launch
 private sealed interface OverlayRoute {
     data object None : OverlayRoute
     data class AddEdit(val alarm: Alarm?) : OverlayRoute
+    data class AddEditTask(val task: SmartTask?) : OverlayRoute
     data object Permissions : OverlayRoute
     data class PracticeDojo(
         val category: ChallengeCategory,
@@ -91,6 +100,10 @@ class MainActivity : ComponentActivity() {
             ) {
                 val alarms by container.alarmRepository.alarmsFlow.collectAsState(initial = emptyList())
                 val aiTasks by container.taskPlanRepository.tasksFlow.collectAsState(initial = emptyList())
+                val places by container.smartTaskRepository.placesFlow.collectAsState(initial = emptyList())
+                val smartTasks by container.smartTaskRepository.tasksFlow.collectAsState(initial = emptyList())
+                val radarRunning by LocationRadarState.isRunning.collectAsState()
+                val currentLocation by LocationRadarState.currentLocation.collectAsState()
                 val pomodoroState by container.pomodoroEngine.state.collectAsState()
                 val pomodoroStats by container.pomodoroRepository.statsFlow.collectAsState()
                 val pendingTab by externalTabRequest.collectAsState()
@@ -132,22 +145,36 @@ class MainActivity : ComponentActivity() {
                     reloadStats()
                 }
 
-                LaunchedEffect(Unit) { reloadStats() }
+                LaunchedEffect(Unit) {
+                    reloadStats()
+                    container.smartTaskRepository.refreshAll()
+                    LocationHelper.bestLastKnownLocation(this@MainActivity)?.let {
+                        LocationRadarState.currentLocation.value = it
+                    }
+                    container.taskScheduler.syncAll(container.smartTaskRepository.getAllTasks())
+                }
 
                 val screenWidthDp = LocalConfiguration.current.screenWidthDp
                 val useRail = screenWidthDp >= 600
 
                 // Keep AnimatedNavShell permanently mounted beneath overlays so opening/closing
-                // Add/Edit Alarm, Permissions, or Practice Dojo never destroys the warm tab cache.
+                // Add/Edit Alarm, Add/Edit Task, Permissions, or Practice Dojo never destroys the warm tab cache.
                 Box(modifier = Modifier.fillMaxSize()) {
                     AnimatedNavShell(
                         useRail = useRail,
                         destination = destination,
                         pomodoroRunning = pomodoroState.isRunning,
+                        locationRadarActive = radarRunning,
                         onSelect = {
                             destination = it
                             if (it == TopDestination.INSIGHTS || it == TopDestination.FOCUS) {
                                 reloadStats()
+                            } else if (it == TopDestination.TASKS && Permissions.hasAnyLocation(this@MainActivity)) {
+                                scope.launch {
+                                    LocationHelper.fetchCurrentLocation(this@MainActivity)?.let { fix ->
+                                        LocationRadarState.currentLocation.value = fix
+                                    }
+                                }
                             }
                         }
                     ) { tab, contentModifier ->
@@ -217,6 +244,67 @@ class MainActivity : ComponentActivity() {
                                 onSelectPreset = { container.pomodoroEngine.selectPreset(it) },
                                 onSelectPhase = { container.pomodoroEngine.selectPhase(it) },
                                 onUpdateGoal = { container.pomodoroEngine.setGoal(it) },
+                                modifier = contentModifier
+                            )
+
+                            TopDestination.TASKS -> TasksScreen(
+                                tasks = smartTasks,
+                                places = places,
+                                radarActive = radarRunning,
+                                currentLocation = currentLocation,
+                                onAddTask = { overlay = OverlayRoute.AddEditTask(null) },
+                                onEditTask = { overlay = OverlayRoute.AddEditTask(it) },
+                                onToggleTaskEnabled = { task, enabled ->
+                                    scope.launch {
+                                        val fix = currentLocation ?: LocationHelper.bestLastKnownLocation(this@MainActivity)
+                                        val linkedPlace = task.placeId?.let { pid -> places.firstOrNull { it.id == pid } }
+                                        val insideNow = if (enabled && task.triggerType == TaskTriggerType.LOCATION && linkedPlace != null && fix != null) {
+                                            LocationGeoMath.distanceMeters(
+                                                fix.latitude, fix.longitude,
+                                                linkedPlace.latitude, linkedPlace.longitude
+                                            ) <= task.radiusMeters
+                                        } else task.lastInside
+                                        val updated = task.copy(isEnabled = enabled, lastInside = insideNow)
+                                        container.smartTaskRepository.updateTask(updated)
+                                        container.taskScheduler.syncAll(container.smartTaskRepository.getAllTasks())
+                                    }
+                                },
+                                onToggleTaskCompleted = { task, done ->
+                                    scope.launch {
+                                        container.smartTaskRepository.setTaskCompleted(task.id, done)
+                                        container.taskScheduler.syncAll(container.smartTaskRepository.getAllTasks())
+                                    }
+                                },
+                                onTestFireTask = { task ->
+                                    val linkedPlace = task.placeId?.let { pid -> places.firstOrNull { it.id == pid } }
+                                    TaskTriggerActions.fireTask(this@MainActivity, task, linkedPlace)
+                                },
+                                onSavePlace = { place ->
+                                    scope.launch {
+                                        if (place.id == 0L) {
+                                            container.smartTaskRepository.insertPlace(place)
+                                        } else {
+                                            container.smartTaskRepository.updatePlace(place)
+                                        }
+                                        container.taskScheduler.syncAll(container.smartTaskRepository.getAllTasks())
+                                    }
+                                },
+                                onDeletePlace = { place ->
+                                    scope.launch {
+                                        container.smartTaskRepository.deletePlace(place.id)
+                                        container.taskScheduler.syncAll(container.smartTaskRepository.getAllTasks())
+                                    }
+                                },
+                                onRefreshLocation = {
+                                    scope.launch {
+                                        LocationHelper.fetchCurrentLocation(this@MainActivity)?.let { fix ->
+                                            LocationRadarState.currentLocation.value = fix
+                                        }
+                                        container.taskScheduler.syncLocationMonitoring(
+                                            container.smartTaskRepository.getAllTasks()
+                                        )
+                                    }
+                                },
                                 modifier = contentModifier
                             )
 
@@ -345,6 +433,63 @@ class MainActivity : ComponentActivity() {
                                     onExit = { overlay = OverlayRoute.None }
                                 )
                             }
+
+                            is OverlayRoute.AddEditTask -> {
+                                AddEditTaskScreen(
+                                    initialTask = activeOverlay.task,
+                                    places = places,
+                                    currentLocation = currentLocation,
+                                    onSaveTask = { saved ->
+                                        scope.launch {
+                                            val fix = currentLocation ?: LocationHelper.bestLastKnownLocation(this@MainActivity)
+                                            val linkedPlace = saved.placeId?.let { pid ->
+                                                container.smartTaskRepository.getPlaceById(pid)
+                                            }
+                                            // Initialize lastInside from current coordinates when creating a location task
+                                            // so saving a task while already sitting at the spot does not fire 1s later.
+                                            val initialInside = if (
+                                                saved.id == 0L &&
+                                                saved.triggerType == TaskTriggerType.LOCATION &&
+                                                linkedPlace != null &&
+                                                fix != null
+                                            ) {
+                                                LocationGeoMath.distanceMeters(
+                                                    fix.latitude, fix.longitude,
+                                                    linkedPlace.latitude, linkedPlace.longitude
+                                                ) <= saved.radiusMeters
+                                            } else saved.lastInside
+
+                                            val prepared = saved.copy(lastInside = initialInside)
+                                            if (prepared.id == 0L) {
+                                                container.smartTaskRepository.insertTask(prepared)
+                                            } else {
+                                                container.smartTaskRepository.updateTask(prepared)
+                                            }
+                                            container.taskScheduler.syncAll(
+                                                container.smartTaskRepository.getAllTasks()
+                                            )
+                                            overlay = OverlayRoute.None
+                                        }
+                                    },
+                                    onDeleteTask = activeOverlay.task?.let { existing ->
+                                        {
+                                            scope.launch {
+                                                container.taskScheduler.cancelTimeTask(existing.id)
+                                                container.smartTaskRepository.deleteTask(existing.id)
+                                                container.taskScheduler.syncAll(
+                                                    container.smartTaskRepository.getAllTasks()
+                                                )
+                                                overlay = OverlayRoute.None
+                                            }
+                                        }
+                                    },
+                                    onSaveNewPlace = { newPlace ->
+                                        val newId = container.smartTaskRepository.insertPlace(newPlace)
+                                        newPlace.copy(id = newId)
+                                    },
+                                    onCancel = { overlay = OverlayRoute.None }
+                                )
+                            }
                         }
                     }
                 }
@@ -352,7 +497,6 @@ class MainActivity : ComponentActivity() {
                 if (showAiAssistant) {
                     AiAssistantSheet(
                         agent = container.aiAgent,
-                        modelName = prefs.modelName,
                         onDismiss = { showAiAssistant = false },
                         onOpenFocusTab = { destination = TopDestination.FOCUS },
                         onThemeChanged = {

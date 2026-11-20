@@ -20,7 +20,20 @@
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
 
     <application
         android:name=".TimecureApp"
@@ -54,6 +67,30 @@
             android:turnScreenOn="true"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- Follow-up Wake-Up Check countdown popup after dismissing an alarm -->
+        <activity
+            android:name=".ui.screens.ringing.WakeUpCheckActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:screenOrientation="portrait"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+
+        <!-- Safeguard blocking Android power-off menu until wake-up check confirms user is awake -->
+        <service
+            android:name=".alarm.PowerOffGuardService"
+            android:exported="false"
+            android:label="Timecure Prevent Power-Off"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/power_off_guard_service" />
+        </service>
+
         <service
             android:name=".alarm.AlarmService"
             android:exported="false"
@@ -71,6 +108,33 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="User-initiated Pomodoro focus countdown timer with live notification" />
         </service>
+
+        <service
+            android:name=".tasks.LocationTaskService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <service
+            android:name=".tasks.TaskAlarmService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-set location or time task alarm ringing until acknowledged" />
+        </service>
+
+        <activity
+            android:name=".ui.screens.tasks.TaskAlarmActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:screenOrientation="portrait"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+
+        <receiver
+            android:name=".tasks.TaskTriggerReceiver"
+            android:exported="false" />
 
         <receiver
             android:name=".alarm.AlarmReceiver"

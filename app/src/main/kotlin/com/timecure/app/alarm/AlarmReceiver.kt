@@ -17,10 +17,17 @@ class AlarmReceiver : BroadcastReceiver() {
         val alarmId = intent.getLongExtra(AlarmScheduler.EXTRA_ALARM_ID, -1L)
         val rerings = intent.getIntExtra(AlarmScheduler.EXTRA_RERING_COUNT, 0)
         val wakeCheck = intent.getBooleanExtra(AlarmScheduler.EXTRA_WAKE_CHECK, false)
-        Log.i(TAG, "action=$action alarm=$alarmId rerings=$rerings wakeCheck=$wakeCheck")
+        val snoozesUsed = intent.getIntExtra(AlarmScheduler.EXTRA_SNOOZES_USED, 0)
+        Log.i(TAG, "action=$action alarm=$alarmId rerings=$rerings wakeCheck=$wakeCheck snoozes=$snoozesUsed")
+
+        // Wake-up check opens interactive countdown popup rather than immediately screaming full volume.
+        if (action == AlarmScheduler.ACTION_WAKE_CHECK || wakeCheck) {
+            AlarmActions.launchWakeUpCheck(context, alarmId)
+            return
+        }
 
         // Ring immediately: this is time-critical.
-        AlarmActions.ring(context, alarmId, rerings, wakeCheck)
+        AlarmActions.ring(context, alarmId, rerings, wakeCheck = false, snoozesUsed = snoozesUsed)
 
         // A scheduled (non re-ring, non wake-check) fire must arm the next occurrence or disable one-shot.
         if (action == AlarmScheduler.ACTION_ALARM_TRIGGER && alarmId > 0) {

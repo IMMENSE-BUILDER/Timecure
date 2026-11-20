@@ -22,29 +22,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Alarm
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuAnchorType
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -53,17 +39,13 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,19 +53,14 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.timecure.app.TimecureApp
 import com.timecure.app.alarm.AlarmActions
 import com.timecure.app.alarm.AlarmScheduler
-import com.timecure.app.data.local.PreferencesManager
 import com.timecure.app.data.local.ThemeMode
 import com.timecure.app.model.ChallengeDifficulty
 import com.timecure.app.ui.components.safeTopBarWindowInsets
 import com.timecure.app.ui.theme.AppThemePalette
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -101,26 +78,11 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
-    val container = (context.applicationContext as TimecureApp).container
-    val prefs = container.preferences
+    val prefs = (context.applicationContext as TimecureApp).container.preferences
 
     var userName by remember { mutableStateOf(prefs.userName) }
     var defaultGoal by remember { mutableStateOf(prefs.defaultGoal) }
     var defaultDifficulty by remember { mutableStateOf(prefs.defaultDifficulty) }
-
-    var aiEnabled by remember { mutableStateOf(prefs.aiEnabled) }
-    var gatewayUrl by remember { mutableStateOf(prefs.gatewayUrl) }
-    var apiKey by remember { mutableStateOf(prefs.apiKey) }
-    var showApiKey by remember { mutableStateOf(false) }
-    var modelName by remember { mutableStateOf(prefs.modelName) }
-    var modelMenuExpanded by remember { mutableStateOf(false) }
-    var systemInstructions by remember { mutableStateOf(prefs.aiSystemInstructions) }
-    var lastStatus by remember { mutableStateOf(prefs.lastAiStatus) }
-    var isTestingAi by remember { mutableStateOf(false) }
-    var testResultOk by remember { mutableStateOf<Boolean?>(null) }
-
-    val snackbar = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -129,8 +91,7 @@ fun SettingsScreen(
                 title = { Text("Settings") },
                 windowInsets = safeTopBarWindowInsets()
             )
-        },
-        snackbarHost = { SnackbarHost(snackbar) }
+        }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -295,227 +256,6 @@ fun SettingsScreen(
                         Switch(checked = dynamicColor, onCheckedChange = onDynamicColorChange)
                     }
                 )
-            }
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-            // ---------- Vercel AI Gateway ----------
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.width(8.dp))
-                Text("Vercel AI Gateway", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-            }
-
-            ListItem(
-                headlineContent = { Text("Enable AI Coach challenges") },
-                supportingContent = { Text("Generates goal-tailored puzzles online; local engine backs it up offline") },
-                trailingContent = {
-                    Switch(
-                        checked = aiEnabled,
-                        onCheckedChange = {
-                            aiEnabled = it
-                            prefs.aiEnabled = it
-                            if (it) container.challengeRepository.resetAiCooldown()
-                        }
-                    )
-                }
-            )
-
-            OutlinedTextField(
-                value = gatewayUrl,
-                onValueChange = { gatewayUrl = it },
-                label = { Text("Gateway endpoint URL") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = apiKey,
-                onValueChange = { apiKey = it },
-                label = { Text("API key") },
-                visualTransformation = if (showApiKey) VisualTransformation.None else PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                trailingIcon = {
-                    IconButton(onClick = { showApiKey = !showApiKey }) {
-                        Icon(
-                            imageVector = if (showApiKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = if (showApiKey) "Hide API key" else "Show API key"
-                        )
-                    }
-                },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            ExposedDropdownMenuBox(
-                expanded = modelMenuExpanded,
-                onExpandedChange = { modelMenuExpanded = it },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                OutlinedTextField(
-                    value = modelName,
-                    onValueChange = {
-                        modelName = it
-                        prefs.modelName = it
-                    },
-                    label = { Text("AI Model") },
-                    supportingText = { Text("Applies app-wide (Alarms, Vision, Tools & Coach)") },
-                    trailingIcon = {
-                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelMenuExpanded)
-                    },
-                    singleLine = true,
-                    modifier = Modifier
-                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable, enabled = true)
-                        .fillMaxWidth()
-                )
-                ExposedDropdownMenu(
-                    expanded = modelMenuExpanded,
-                    onDismissRequest = { modelMenuExpanded = false }
-                ) {
-                    PreferencesManager.SUPPORTED_MODELS.forEach { option ->
-                        val isCurrent = modelName.equals(option.id, ignoreCase = true)
-                        DropdownMenuItem(
-                            text = {
-                                Column {
-                                    Text(option.displayName, style = MaterialTheme.typography.titleSmall)
-                                    Text(
-                                        text = "${option.id} • ${option.subtitle}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            },
-                            trailingIcon = {
-                                if (isCurrent) {
-                                    Icon(
-                                        Icons.Default.CheckCircle,
-                                        contentDescription = "Active model",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            },
-                            onClick = {
-                                modelName = option.id
-                                prefs.modelName = option.id
-                                container.challengeRepository.resetAiCooldown()
-                                modelMenuExpanded = false
-                                scope.launch {
-                                    snackbar.showSnackbar("Active model switched to ${option.displayName}")
-                                }
-                            }
-                        )
-                    }
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "AI Model System Instructions",
-                    style = MaterialTheme.typography.labelLarge
-                )
-                TextButton(
-                    onClick = { systemInstructions = PreferencesManager.DEFAULT_AI_SYSTEM_INSTRUCTIONS }
-                ) { Text("Reset default") }
-            }
-
-            OutlinedTextField(
-                value = systemInstructions,
-                onValueChange = { systemInstructions = it },
-                label = { Text("System perspective & instructions") },
-                supportingText = { Text("Defines how $modelName thinks, plans routines, and responds across Timecure") },
-                minLines = 3,
-                maxLines = 6,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Button(
-                    onClick = {
-                        prefs.gatewayUrl = gatewayUrl
-                        prefs.apiKey = apiKey
-                        prefs.modelName = modelName
-                        prefs.aiSystemInstructions = systemInstructions
-                        container.challengeRepository.resetAiCooldown()
-                        scope.launch { snackbar.showSnackbar("AI model & system instructions saved") }
-                    },
-                    modifier = Modifier.weight(1f).height(48.dp)
-                ) { Text("Save AI config") }
-
-                FilledTonalButton(
-                    onClick = {
-                        if (!isTestingAi) {
-                            prefs.gatewayUrl = gatewayUrl
-                            prefs.apiKey = apiKey
-                            prefs.modelName = modelName
-                            prefs.aiSystemInstructions = systemInstructions
-                            container.challengeRepository.resetAiCooldown()
-                            isTestingAi = true
-                            scope.launch {
-                                val result = container.aiClient.testConnection()
-                                isTestingAi = false
-                                result.onSuccess { msg ->
-                                    testResultOk = true
-                                    lastStatus = msg
-                                    prefs.lastAiStatus = msg
-                                }.onFailure { err ->
-                                    testResultOk = false
-                                    val msg = err.message ?: "Connection failed"
-                                    lastStatus = msg
-                                    prefs.lastAiStatus = msg
-                                }
-                            }
-                        }
-                    },
-                    enabled = !isTestingAi,
-                    modifier = Modifier.weight(1f).height(48.dp)
-                ) {
-                    if (isTestingAi) {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(Icons.Default.CloudDone, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Test AI")
-                    }
-                }
-            }
-
-            if (lastStatus.isNotBlank()) {
-                val isOk = testResultOk == true || lastStatus.startsWith("OK") || lastStatus.startsWith("Connected")
-                Surface(
-                    color = if (isOk) MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.errorContainer,
-                    shape = MaterialTheme.shapes.medium,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = if (isOk) Icons.Default.CheckCircle else Icons.Default.Warning,
-                            contentDescription = null,
-                            tint = if (isOk) MaterialTheme.colorScheme.onPrimaryContainer
-                            else MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Text(
-                            text = lastStatus,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (isOk) MaterialTheme.colorScheme.onPrimaryContainer
-                            else MaterialTheme.colorScheme.onErrorContainer
-                        )
-                    }
-                }
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)

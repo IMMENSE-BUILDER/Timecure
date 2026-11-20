@@ -34,7 +34,7 @@ object ImageEncoder {
     suspend fun encodeUri(
         context: Context,
         uri: Uri,
-        maxDimension: Int = 1280
+        maxDimension: Int = 1024
     ): EncodedImage? = withContext(Dispatchers.IO) {
         runCatching {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -54,7 +54,7 @@ object ImageEncoder {
 
             val scaled = scaleDownIfNeeded(decoded, maxDimension)
             val baos = ByteArrayOutputStream()
-            scaled.compress(Bitmap.CompressFormat.JPEG, 82, baos)
+            scaled.compress(Bitmap.CompressFormat.JPEG, 78, baos)
             val bytes = baos.toByteArray()
             val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
             EncodedImage(

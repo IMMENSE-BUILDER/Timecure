@@ -2,6 +2,7 @@ package com.timecure.app
 
 import android.content.Context
 import com.timecure.app.alarm.AlarmScheduler
+import com.timecure.app.alarm.AlarmVoiceAssistant
 import com.timecure.app.alarm.SoundManager
 import com.timecure.app.data.local.PreferencesManager
 import com.timecure.app.data.local.TimecureDatabaseHelper
@@ -10,8 +11,10 @@ import com.timecure.app.data.remote.VercelAiClient
 import com.timecure.app.data.repository.AlarmRepository
 import com.timecure.app.data.repository.ChallengeRepository
 import com.timecure.app.data.repository.PomodoroRepository
+import com.timecure.app.data.repository.SmartTaskRepository
 import com.timecure.app.data.repository.TaskPlanRepository
 import com.timecure.app.pomodoro.PomodoroEngine
+import com.timecure.app.tasks.TaskScheduler
 
 /** Hand-rolled DI: single module, zero annotation processing overhead. */
 class AppContainer(context: Context) {
@@ -22,12 +25,23 @@ class AppContainer(context: Context) {
     val alarmRepository by lazy { AlarmRepository(database) }
     val pomodoroRepository by lazy { PomodoroRepository(database) }
     val taskPlanRepository by lazy { TaskPlanRepository(database) }
-    val aiClient by lazy { VercelAiClient(preferences) }
+    val smartTaskRepository by lazy { SmartTaskRepository(database) }
+    val aiClient by lazy { VercelAiClient() }
     val challengeRepository by lazy { ChallengeRepository(aiClient, preferences) }
     val alarmScheduler by lazy { AlarmScheduler(app) }
+    val taskScheduler by lazy { TaskScheduler(app) }
     val soundManager by lazy { SoundManager(app) }
+    val voiceAssistant by lazy { AlarmVoiceAssistant(app, soundManager) }
     val pomodoroEngine by lazy { PomodoroEngine(app, pomodoroRepository, preferences) }
     val aiAgent by lazy {
-        TimecureAiAgent(app, preferences, alarmRepository, alarmScheduler, pomodoroEngine, taskPlanRepository)
+        TimecureAiAgent(
+            app,
+            preferences,
+            alarmRepository,
+            alarmScheduler,
+            pomodoroEngine,
+            taskPlanRepository,
+            smartTaskRepository
+        )
     }
 }

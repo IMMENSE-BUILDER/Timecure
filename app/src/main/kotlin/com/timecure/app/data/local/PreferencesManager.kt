@@ -2,7 +2,6 @@ package com.timecure.app.data.local
 
 import android.content.Context
 import android.content.SharedPreferences
-import com.timecure.app.BuildConfig
 import com.timecure.app.model.ChallengeDifficulty
 import com.timecure.app.ui.theme.AppThemePalette
 
@@ -16,52 +15,29 @@ enum class ThemeMode(val label: String) {
     }
 }
 
-data class AiModelOption(
-    val id: String,
-    val displayName: String,
-    val subtitle: String
-)
-
 class PreferencesManager(context: Context) {
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    /** Defaults come from local.properties via BuildConfig, so no secret lives in source control. */
-    var gatewayUrl: String
-        get() = prefs.getString(KEY_GATEWAY_URL, null)?.takeIf { it.isNotBlank() } ?: BuildConfig.AI_GATEWAY_URL
-        set(value) = prefs.edit().putString(KEY_GATEWAY_URL, value.trim()).apply()
-
-    var apiKey: String
-        get() = prefs.getString(KEY_API_KEY, null)?.takeIf { it.isNotBlank() } ?: BuildConfig.AI_GATEWAY_API_KEY
-        set(value) {
-            val trimmed = value.trim()
-            if (trimmed.isEmpty() || trimmed == BuildConfig.AI_GATEWAY_API_KEY) {
-                prefs.edit().remove(KEY_API_KEY).apply()
-            } else {
-                prefs.edit().putString(KEY_API_KEY, trimmed).apply()
-            }
+    init {
+        val legacyKeys = listOf(
+            "gateway_url",
+            "api_key",
+            "model_name",
+            "ai_system_instructions",
+            "ai_enabled",
+            "last_ai_status"
+        )
+        if (legacyKeys.any { prefs.contains(it) }) {
+            prefs.edit().apply {
+                legacyKeys.forEach { remove(it) }
+                remove(KEY_AI_BLOCKED_UNTIL)
+            }.apply()
         }
+    }
 
-    var modelName: String
-        get() = prefs.getString(KEY_MODEL_NAME, null)?.takeIf { it.isNotBlank() } ?: BuildConfig.AI_MODEL
-        set(value) = prefs.edit().putString(KEY_MODEL_NAME, value.trim()).apply()
-
-    var aiSystemInstructions: String
-        get() = prefs.getString(KEY_AI_SYSTEM_INSTRUCTIONS, null)?.takeIf { it.isNotBlank() }
-            ?: DEFAULT_AI_SYSTEM_INSTRUCTIONS
-        set(value) = prefs.edit().putString(KEY_AI_SYSTEM_INSTRUCTIONS, value.trim()).apply()
-
-    var aiEnabled: Boolean
-        get() = prefs.getBoolean(KEY_AI_ENABLED, true)
-        set(value) = prefs.edit().putBoolean(KEY_AI_ENABLED, value).apply()
-
-    /** Human-readable result of the last AI call, shown in Settings. Empty = never called. */
-    var lastAiStatus: String
-        get() = prefs.getString(KEY_LAST_AI_STATUS, "") ?: ""
-        set(value) = prefs.edit().putString(KEY_LAST_AI_STATUS, value).apply()
-
-    /** After a failure the AI is skipped for a while so a dead key never delays an alarm. */
+    /** After a transient server failure the alarm challenge engine cools down briefly offline. */
     var aiBlockedUntil: Long
         get() = prefs.getLong(KEY_AI_BLOCKED_UNTIL, 0L)
         set(value) = prefs.edit().putLong(KEY_AI_BLOCKED_UNTIL, value).apply()
@@ -99,28 +75,7 @@ class PreferencesManager(context: Context) {
     companion object {
         private const val PREFS_NAME = "timecure_preferences"
         const val DEFAULT_GOAL = "Win the morning"
-        const val DEFAULT_AI_SYSTEM_INSTRUCTIONS =
-            "You are Timecure's disciplined, high-agency personal performance coach. Help the user beat morning inertia, organize college & deep-work routines cleanly, recommend science-backed study methods (Pomodoro, Active Recall, Spaced Repetition), and take direct action via tools."
 
-        val SUPPORTED_MODELS = listOf(
-            AiModelOption(
-                id = "minimax/minimax-m3.1-flash",
-                displayName = "MiniMax M3.1 Flash",
-                subtitle = "Fast multimodal reasoning & tool calling"
-            ),
-            AiModelOption(
-                id = "meta/muse-ember",
-                displayName = "Meta Muse Ember",
-                subtitle = "Vercel Gateway multimodal reasoning model"
-            )
-        )
-
-        private const val KEY_GATEWAY_URL = "gateway_url"
-        private const val KEY_API_KEY = "api_key"
-        private const val KEY_MODEL_NAME = "model_name"
-        private const val KEY_AI_SYSTEM_INSTRUCTIONS = "ai_system_instructions"
-        private const val KEY_AI_ENABLED = "ai_enabled"
-        private const val KEY_LAST_AI_STATUS = "last_ai_status"
         private const val KEY_AI_BLOCKED_UNTIL = "ai_blocked_until"
         private const val KEY_DEFAULT_GOAL = "default_goal"
         private const val KEY_USER_NAME = "user_name"

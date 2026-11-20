@@ -29,7 +29,8 @@ import {
   TIMECURE_PALETTES,
 } from './themes';
 import { TimecureLogo } from './components/TimecureLogo';
-import { InteractivePhone } from './components/InteractivePhone';
+import { InteractivePhone, ScreenJumpRequest } from './components/InteractivePhone';
+import { PhoneScreenTarget } from './components/InteractivePhoneOverlays';
 import { CognitiveDojoDemo } from './components/CognitiveDojoDemo';
 import { Mp3TrimmerDemo } from './components/Mp3TrimmerDemo';
 import { AiVisionShowcase } from './components/AiVisionShowcase';
@@ -37,8 +38,17 @@ import { AiVisionShowcase } from './components/AiVisionShowcase';
 export function App() {
   const [paletteId, setPaletteId] = useState<PaletteId>('OCEAN_DAWN');
   const [darkMode, setDarkMode] = useState(true);
-  const [selectedModel, setSelectedModel] = useState('minimax/minimax-m3.1-flash');
   const [copiedAdb, setCopiedAdb] = useState(false);
+  const [screenJump, setScreenJump] = useState<ScreenJumpRequest | null>(null);
+  const [activeScreenLabel, setActiveScreenLabel] = useState('Alarms Home');
+
+  const jumpToPhoneScreen = (label: string, target: PhoneScreenTarget, scrollToPhone = false) => {
+    setActiveScreenLabel(label);
+    setScreenJump((prev) => ({ target, seq: (prev?.seq ?? 0) + 1 }));
+    if (scrollToPhone) {
+      document.getElementById('phone-sim')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
 
   // Sync the exact selected Material 3 palette into CSS custom properties site-wide
   useEffect(() => {
@@ -117,13 +127,13 @@ export function App() {
             style={{ color: 'var(--tc-on-surface-variant)' }}
           >
             <a href="#architecture" className="hover:opacity-100 opacity-85 transition">
-              Alarm Engine
+              Screens
             </a>
             <a href="#dojo" className="hover:opacity-100 opacity-85 transition">
               Cognitive Dojo
             </a>
             <a href="#ai-studio" className="hover:opacity-100 opacity-85 transition">
-              Vercel AI
+              Timecure AI
             </a>
             <a href="#audio" className="hover:opacity-100 opacity-85 transition">
               MP3 Trimmer
@@ -210,10 +220,9 @@ export function App() {
               className="max-w-xl text-base sm:text-lg leading-relaxed"
               style={{ color: 'var(--tc-on-surface-variant)' }}
             >
-              <strong>Timecure</strong> overrides silent mode and DND, locks your screen until you
-              solve cognitive awakening puzzles, trims your favorite phone MP3s frame-accurately,
-              and chains straight into a 60-tick Pomodoro chronometer — supercharged by{' '}
-              <strong>Vercel AI Gateway</strong> vision and autonomous tool calling.
+              <strong>Timecure</strong> overrides silent mode and DND, locks out power-off attempts,
+              requires interactive wake-up missions (Math, Color Tiles, Typing, Steps, Voice Beat, &amp; AI Item Hunt),
+              runs GPS location &amp; scheduled tasks, and pairs with server-side Vision AI.
             </p>
 
             {/* Primary Action Row */}
@@ -291,10 +300,10 @@ export function App() {
               className="grid grid-cols-2 gap-3 pt-2 sm:grid-cols-4"
             >
               {[
-                { val: '0ms', label: 'Warm Tab Switch' },
-                { val: '6', label: 'Cognitive Engines' },
+                { val: '5 Tabs', label: 'Tasks & GPS Radar' },
+                { val: '6', label: 'Wake-Up Missions' },
                 { val: '60-tick', label: 'Canvas Chronometer' },
-                { val: '7 Tools', label: 'Vercel AI Agent' },
+                { val: '0-Key', label: 'Server-Side AI' },
               ].map((stat) => (
                 <div
                   key={stat.label}
@@ -322,26 +331,60 @@ export function App() {
           </div>
 
           {/* RIGHT: LIVE INTERACTIVE ANDROID PHONE SIMULATOR */}
-          <div className="flex flex-col items-center lg:col-span-5">
+          <div id="phone-sim" className="flex flex-col items-center lg:col-span-5">
+            {/* Direct Quick-Jump Screen Strip */}
+            <div className="mb-3 flex max-w-[360px] flex-wrap justify-center gap-1.5">
+              {(
+                [
+                  ['Alarms', { kind: 'tab', tab: 'alarms' }],
+                  ['Alarm Editor', { kind: 'alarm_editor' }],
+                  ['6 Missions', { kind: 'mission_picker' }],
+                  ['Tasks (GPS)', { kind: 'tab', tab: 'tasks' }],
+                  ['Focus', { kind: 'tab', tab: 'focus' }],
+                  ['Wake Check', { kind: 'wake_check' }],
+                  ['AI Sheet', { kind: 'ai_sheet' }],
+                  ['Settings', { kind: 'tab', tab: 'settings' }],
+                ] as [string, PhoneScreenTarget][]
+              ).map(([label, target]) => {
+                const active = activeScreenLabel === label;
+                return (
+                  <button
+                    key={label}
+                    onClick={() => jumpToPhoneScreen(label, target, false)}
+                    className="tc-pressable cursor-pointer rounded-full px-2.5 py-1 text-[10px] font-bold"
+                    style={{
+                      backgroundColor: active
+                        ? 'var(--tc-primary)'
+                        : 'var(--tc-surface-low)',
+                      color: active
+                        ? 'var(--tc-on-primary)'
+                        : 'var(--tc-on-surface-variant)',
+                      border: '1px solid var(--tc-outline-variant)',
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
             <InteractivePhone
               paletteId={paletteId}
               darkMode={darkMode}
-              selectedModel={selectedModel}
               onSelectPalette={setPaletteId}
               onToggleDarkMode={() => setDarkMode((d) => !d)}
-              onSelectModel={setSelectedModel}
+              screenJump={screenJump}
             />
             <p
               className="mt-4 text-center text-xs"
               style={{ color: 'var(--tc-on-surface-variant)' }}
             >
-              Interactive preview — tap tabs, start Pomodoro, switch themes, or click{' '}
-              <strong style={{ color: 'var(--tc-primary)' }}>Simulate Unstoppable Ring</strong>.
+              Interactive touch simulation — tap anywhere inside the phone or switch screens above.
             </p>
           </div>
         </section>
 
-        {/* SECTION 2: UNSTOPPABLE ALARM LIFECYCLE */}
+        {/* SECTION 2: INTERACTIVE APP SCREENS EXPLORER */}
         <section id="architecture" className="py-12">
           <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
             <div>
@@ -350,10 +393,10 @@ export function App() {
                 style={{ color: 'var(--tc-primary)' }}
               >
                 <ShieldAlert className="h-4 w-4" />
-                Unstoppable Alarm Engine
+                Real Interactive App Screens
               </div>
               <h2 className="mt-1 text-3xl sm:text-4xl font-extrabold tracking-tight">
-                Engineered so sleep-drunk fingers can’t cheat.
+                Click any screen below to launch it live inside the phone.
               </h2>
             </div>
             <span
@@ -364,54 +407,63 @@ export function App() {
                 color: 'var(--tc-on-surface-variant)',
               }}
             >
-              AlarmManager.setAlarmClock() • STREAM_ALARM • BootReceiver
+              Touch Simulation • Full State Sync • 5-Tab Shell
             </span>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {[
-              {
-                step: '01',
-                icon: AlarmClock,
-                title: 'Doze-Immune Exact Firing',
-                desc: 'Scheduled via AlarmManager.setAlarmClock() with automatic reboot, timezone, and package-update re-arming through BootReceiver.',
-              },
-              {
-                step: '02',
-                icon: Volume2,
-                title: 'Max Volume & DND Override',
-                desc: 'SoundManager forces STREAM_ALARM to maximum, claims exclusive alarm audio focus, bypasses Do Not Disturb, and pairs with an escalating haptic waveform.',
-              },
-              {
-                step: '03',
-                icon: Lock,
-                title: 'Lock-Screen Takeover',
-                desc: 'RingingActivity wakes over the keyguard, intercepts hardware VOLUME_UP / VOLUME_DOWN / MUTE keys, and blocks accidental Back presses.',
-              },
-              {
-                step: '04',
-                icon: BellOff,
-                title: 'Escalating Re-Ring Defense',
-                desc: 'Force-closing or dodging the alarm triggers an automatic escalating re-ring (+2 min → +5 min recurring) until every cognitive step is solved.',
-              },
-              {
-                step: '05',
-                icon: RefreshCcw,
-                title: '5-Min Anti-Relapse Wake Check',
-                desc: 'Optional per-alarm follow-up confirmation 5 minutes after silencing. Fall back asleep and Timecure immediately re-fires.',
-              },
-              {
-                step: '06',
-                icon: Timer,
-                title: 'Instant Pomodoro Handoff',
-                desc: 'Victory card transitions directly into a 25-minute Deep Focus sprint pre-loaded with your alarm goal (like “Get up for college”).',
-              },
-            ].map((item) => {
+            {(
+              [
+                {
+                  step: 'SCREEN 01',
+                  icon: AlarmClock,
+                  title: 'Wake-Up Alarm Editor',
+                  desc: 'Configure volume +9dB boost, gentle wake-up ramp, Time/Weather/Label voice reminders, Snooze, Wallpaper, and 5 chained Wake-Up Missions.',
+                  target: { kind: 'alarm_editor' } as PhoneScreenTarget,
+                },
+                {
+                  step: 'SCREEN 02',
+                  icon: Volume2,
+                  title: '6 Interactive Wake-Up Missions',
+                  desc: 'Play Household Item Hunt (AI Vision), Say the Word on Beat, Find Color Tiles memory grid, Typing, Math, or Step pedometer directly.',
+                  target: { kind: 'mission_picker' } as PhoneScreenTarget,
+                },
+                {
+                  step: 'SCREEN 03',
+                  icon: Lock,
+                  title: 'Prevent Power-Off Safeguard',
+                  desc: 'Two-step Display Over Apps + Accessibility Service guard blocks power-off menus until cognitive dismissal & goal readiness are verified.',
+                  target: { kind: 'prevent_power_off' } as PhoneScreenTarget,
+                },
+                {
+                  step: 'SCREEN 04',
+                  icon: BellOff,
+                  title: 'Wake-Up Check (3-2-1 Countdown)',
+                  desc: 'Follow-up countdown popup after dismissal confirms you are truly awake before silencing all alarms tied to that goal.',
+                  target: { kind: 'wake_check' } as PhoneScreenTarget,
+                },
+                {
+                  step: 'SCREEN 05',
+                  icon: RefreshCcw,
+                  title: 'Location GPS & Time Tasks',
+                  desc: 'Mark custom places (100m–500m radius) with foreground GPS geofencing & arrival alerts, centered right in the 5-tab bar.',
+                  target: { kind: 'tab', tab: 'tasks' } as PhoneScreenTarget,
+                },
+                {
+                  step: 'SCREEN 06',
+                  icon: Timer,
+                  title: 'Lock-Screen Ring → Pomodoro',
+                  desc: 'DND-bypass takeover requires cognitive verification, then launches straight into the 60-tick Canvas Pomodoro chronometer.',
+                  target: { kind: 'ringing' } as PhoneScreenTarget,
+                },
+              ]
+            ).map((item) => {
               const Icon = item.icon;
               return (
-                <div
+                <button
                   key={item.step}
-                  className="group rounded-3xl p-6 transition-all duration-200 hover:-translate-y-0.5"
+                  onClick={() => jumpToPhoneScreen(item.title, item.target, true)}
+                  className="tc-pressable group cursor-pointer rounded-3xl p-6 text-left transition-all duration-200 hover:-translate-y-0.5"
                   style={{
                     backgroundColor: 'var(--tc-surface-low)',
                     border: '1px solid var(--tc-outline-variant)',
@@ -427,22 +479,18 @@ export function App() {
                     >
                       <Icon className="h-5 w-5" />
                     </div>
-                    <span
-                      className="font-mono-tech text-xs font-bold opacity-50"
-                    >
-                      STAGE {item.step}
+                    <span className="font-mono-tech text-xs font-bold" style={{ color: 'var(--tc-primary)' }}>
+                      {item.step} →
                     </span>
                   </div>
-                  <h3 className="mt-4 text-lg font-bold tracking-tight">
-                    {item.title}
-                  </h3>
+                  <h3 className="mt-4 text-lg font-bold tracking-tight">{item.title}</h3>
                   <p
                     className="mt-2 text-sm leading-relaxed"
                     style={{ color: 'var(--tc-on-surface-variant)' }}
                   >
                     {item.desc}
                   </p>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -453,12 +501,9 @@ export function App() {
           <CognitiveDojoDemo />
         </section>
 
-        {/* SECTION 4: VERCEL AI GATEWAY & MULTIMODAL VISION STUDIO */}
+        {/* SECTION 4: SERVER-SIDE AI & MULTIMODAL VISION STUDIO */}
         <section id="ai-studio" className="py-10">
-          <AiVisionShowcase
-            selectedModel={selectedModel}
-            onSelectModel={setSelectedModel}
-          />
+          <AiVisionShowcase />
         </section>
 
         {/* SECTION 5: INTERACTIVE MP3 WAVEFORM TRIMMER */}
@@ -499,7 +544,7 @@ export function App() {
                 {
                   icon: Zap,
                   title: 'Warm Tab Caching (0ms Switch)',
-                  desc: 'All 4 destinations pre-warm after startup and stay mounted underneath overlays — zero screen teardown lag.',
+                  desc: 'All 5 destinations pre-warm after startup and stay mounted underneath overlays — zero screen teardown lag.',
                 },
                 {
                   icon: Layers,
@@ -737,7 +782,7 @@ export function App() {
             <span className="font-semibold" style={{ color: 'var(--tc-on-surface)' }}>
               Timecure
             </span>
-            <span>• Built with Kotlin, Jetpack Compose, Material 3 & Vercel AI Gateway</span>
+            <span>• Built with Kotlin, Jetpack Compose, Material 3 &amp; Server-Side AI</span>
           </div>
           <div className="flex items-center gap-4">
             <a href={REPO_URL} target="_blank" rel="noreferrer" className="hover:underline">

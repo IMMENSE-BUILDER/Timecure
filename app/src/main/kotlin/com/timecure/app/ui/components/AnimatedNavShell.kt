@@ -40,6 +40,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -89,6 +90,7 @@ enum class TopDestination(
 ) {
     ALARMS("Alarms", "Wake-Up Schedule", Icons.Default.Alarm),
     FOCUS("Focus", "Pomodoro Flow", Icons.Default.Timer),
+    TASKS("Tasks", "Time & Place Radar", Icons.Default.TaskAlt),
     INSIGHTS("Insights", "Wake & Focus Stats", Icons.Default.Insights),
     SETTINGS("Settings", "AI & System Control", Icons.Default.Settings)
 }
@@ -105,6 +107,7 @@ fun AnimatedNavShell(
     useRail: Boolean,
     destination: TopDestination,
     pomodoroRunning: Boolean,
+    locationRadarActive: Boolean = false,
     onSelect: (TopDestination) -> Unit,
     content: @Composable (TopDestination, Modifier) -> Unit
 ) {
@@ -230,7 +233,9 @@ fun AnimatedNavShell(
                         icon = {
                             Box {
                                 Icon(dest.icon, contentDescription = dest.label)
-                                if (dest == TopDestination.FOCUS && pomodoroRunning) {
+                                if ((dest == TopDestination.FOCUS && pomodoroRunning) ||
+                                    (dest == TopDestination.TASKS && locationRadarActive)
+                                ) {
                                     RunningIndicatorDot(Modifier.align(Alignment.TopEnd))
                                 }
                             }
@@ -248,6 +253,7 @@ fun AnimatedNavShell(
                 TimecureExpressiveNavBar(
                     selectedDestination = destination,
                     pomodoroRunning = pomodoroRunning,
+                    locationRadarActive = locationRadarActive,
                     reducedMotion = reducedMotion,
                     onSelect = onSelect
                 )
@@ -352,6 +358,7 @@ private fun NavigationPhaseOverlay(
 private fun TimecureExpressiveNavBar(
     selectedDestination: TopDestination,
     pomodoroRunning: Boolean,
+    locationRadarActive: Boolean,
     reducedMotion: Boolean,
     onSelect: (TopDestination) -> Unit
 ) {
@@ -363,9 +370,9 @@ private fun TimecureExpressiveNavBar(
     var prevIndex by remember { mutableIntStateOf(selectedIndex) }
     LaunchedEffect(selectedIndex) {
         if (selectedIndex != prevIndex && !reducedMotion) {
-            val jump = abs(selectedIndex - prevIndex).coerceAtMost(3)
+            val jump = abs(selectedIndex - prevIndex).coerceAtMost(4)
             prevIndex = selectedIndex
-            stretchAnim.snapTo(jump * 9f)
+            stretchAnim.snapTo(jump * 7f)
             stretchAnim.animateTo(
                 targetValue = 0f,
                 animationSpec = spring(
@@ -394,10 +401,10 @@ private fun TimecureExpressiveNavBar(
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .height(74.dp)
-                .padding(horizontal = 8.dp)
+                .padding(horizontal = 6.dp)
         ) {
             val slotWidth = maxWidth / destinations.size
-            val basePillWidth = 64.dp
+            val basePillWidth = 54.dp
             val dynamicPillWidth = basePillWidth + stretchAnim.value.dp
             val targetOffset = slotWidth * selectedIndex + (slotWidth - dynamicPillWidth) / 2f
 
@@ -490,7 +497,9 @@ private fun TimecureExpressiveNavBar(
                                         scaleY = pressScale
                                     }
                             )
-                            if (dest == TopDestination.FOCUS && pomodoroRunning) {
+                            if ((dest == TopDestination.FOCUS && pomodoroRunning) ||
+                                (dest == TopDestination.TASKS && locationRadarActive)
+                            ) {
                                 RunningIndicatorDot(
                                     modifier = Modifier
                                         .align(Alignment.TopEnd)
@@ -503,7 +512,9 @@ private fun TimecureExpressiveNavBar(
                             text = dest.label,
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = labelTint
+                            color = labelTint,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -536,6 +547,7 @@ private fun RunningIndicatorDot(modifier: Modifier = Modifier) {
 private fun destinationAccentColor(dest: TopDestination): Color = when (dest) {
     TopDestination.ALARMS -> MaterialTheme.colorScheme.primary
     TopDestination.FOCUS -> MaterialTheme.colorScheme.tertiary
+    TopDestination.TASKS -> MaterialTheme.colorScheme.primary
     TopDestination.INSIGHTS -> MaterialTheme.colorScheme.secondary
     TopDestination.SETTINGS -> MaterialTheme.colorScheme.primary
 }
@@ -544,6 +556,7 @@ private fun destinationAccentColor(dest: TopDestination): Color = when (dest) {
 private fun destinationContainerColor(dest: TopDestination): Color = when (dest) {
     TopDestination.ALARMS -> MaterialTheme.colorScheme.primaryContainer
     TopDestination.FOCUS -> MaterialTheme.colorScheme.tertiaryContainer
+    TopDestination.TASKS -> MaterialTheme.colorScheme.primaryContainer
     TopDestination.INSIGHTS -> MaterialTheme.colorScheme.secondaryContainer
     TopDestination.SETTINGS -> MaterialTheme.colorScheme.primaryContainer
 }
@@ -552,6 +565,7 @@ private fun destinationContainerColor(dest: TopDestination): Color = when (dest)
 private fun destinationOnContainerColor(dest: TopDestination): Color = when (dest) {
     TopDestination.ALARMS -> MaterialTheme.colorScheme.onPrimaryContainer
     TopDestination.FOCUS -> MaterialTheme.colorScheme.onTertiaryContainer
+    TopDestination.TASKS -> MaterialTheme.colorScheme.onPrimaryContainer
     TopDestination.INSIGHTS -> MaterialTheme.colorScheme.onSecondaryContainer
     TopDestination.SETTINGS -> MaterialTheme.colorScheme.onPrimaryContainer
 }

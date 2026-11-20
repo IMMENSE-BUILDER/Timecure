@@ -1,7 +1,7 @@
 package com.timecure.app.data.remote
 
 import android.util.Log
-import com.timecure.app.data.local.PreferencesManager
+import com.timecure.app.BuildConfig
 import com.timecure.app.model.ChallengeCategory
 import com.timecure.app.model.ChallengeDifficulty
 import com.timecure.app.model.ChallengeSource
@@ -22,11 +22,16 @@ sealed interface AiResult {
     data class Failure(val reason: String) : AiResult
 }
 
-class VercelAiClient(private val prefs: PreferencesManager) {
+/**
+ * Generates goal-aligned wake-up cognitive puzzles via Timecure's server-side AI endpoint.
+ * Never throws; offline or transient server errors return [AiResult.Failure].
+ */
+class VercelAiClient {
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .callTimeout(8, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .callTimeout(25, TimeUnit.SECONDS)
         .build()
 
     private val json = "application/json; charset=utf-8".toMediaType()
@@ -35,17 +40,15 @@ class VercelAiClient(private val prefs: PreferencesManager) {
     suspend fun generate(difficulty: ChallengeDifficulty, goal: String): AiResult =
         withContext(Dispatchers.IO) {
             val system = """
-                ${prefs.aiSystemInstructions}
-
-                Right now you are acting as the wake-up cognitive challenge generator inside the alarm.
-                The user is groggy, so wake their prefrontal cortex with ONE short reasoning question at ${difficulty.displayName.uppercase()} difficulty.
-                Weave in the user's goal when natural. Rules:
+                You are Timecure's wake-up cognitive challenge generator inside an alarm screen.
+                The user is groggy, so wake their prefrontal cortex with ONE sharp reasoning question at ${difficulty.displayName.uppercase()} difficulty.
+                Weave in the user's goal naturally when relevant. Rules:
                 - The answer must be a single integer or a single lowercase word (no sentences).
-                - The question must have exactly one correct answer; double-check any arithmetic.
-                - Reply with ONLY a JSON object: {"question": "...", "answer": "...", "hint": "..."}
+                - The question must have exactly one unambiguous answer; double-check any arithmetic.
+                - Reply with ONLY raw JSON (no markdown fences): {"question": "...", "answer": "...", "hint": "..."}
             """.trimIndent()
-            val user = "My goal this morning: $goal. Give me one ${difficulty.displayName} question."
-            call(system, user, maxTokens = 400)
+            val user = "My morning goal: $goal. Give me one ${difficulty.displayName} question."
+            call(system, user, maxTokens = 1200)
                 .mapCatching { parseChallenge(it, difficulty) }
                 .fold(
                     onSuccess = { AiResult.Success(it) },
@@ -53,20 +56,8 @@ class VercelAiClient(private val prefs: PreferencesManager) {
                 )
         }
 
-    /** Used by Settings: a tiny real request that reports exactly what the gateway said. */
-    suspend fun testConnection(): Result<String> = withContext(Dispatchers.IO) {
-        call("Reply with the single word OK.", "ping", maxTokens = 20)
-            .map { "Connected. Model replied: ${it.trim().take(40)}" }
-    }
-
     private fun call(system: String, user: String, maxTokens: Int): Result<String> = runCatching {
-        val key = prefs.apiKey
-        val url = prefs.gatewayUrl
-        require(key.isNotBlank()) { "No API key set" }
-        require(url.isNotBlank()) { "No gateway URL set" }
-
         val body = JSONObject().apply {
-            put("model", prefs.modelName)
             put("temperature", 0.6)
             put("max_tokens", maxTokens)
             put("messages", JSONArray().apply {
@@ -75,8 +66,7 @@ class VercelAiClient(private val prefs: PreferencesManager) {
             })
         }
         val request = Request.Builder()
-            .url(url)
-            .header("Authorization", "Bearer $key")
+            .url(BuildConfig.TIMECURE_AI_ENDPOINT)
             .post(body.toString().toRequestBody(json))
             .build()
 
@@ -85,31 +75,52 @@ class VercelAiClient(private val prefs: PreferencesManager) {
             if (!resp.isSuccessful) {
                 error(describeHttpFailure(resp.code, text))
             }
-            JSONObject(text).getJSONArray("choices").getJSONObject(0)
-                .getJSONObject("message").optString("content")
-                .also { require(it.isNotBlank()) { "Model returned an empty reply" } }
+            extractReplyContent(text)
+                .also { require(it.isNotBlank()) { "AI returned an empty reply" } }
         }
     }.onFailure { Log.w(TAG, "AI call failed: ${it.message}") }
 
     companion object {
         private const val TAG = "VercelAiClient"
 
-        fun describeHttpFailure(code: Int, body: String): String = when (code) {
-            401, 403 -> "HTTP $code: the gateway rejected this API key (invalid, revoked, or no AI Gateway access)"
-            402 -> "HTTP 402: the AI Gateway account has no credit"
-            404 -> "HTTP 404: unknown model or wrong gateway URL"
-            429 -> "HTTP 429: rate limited"
-            else -> "HTTP $code${body.take(120).let { if (it.isBlank()) "" else ": $it" }}"
+        fun describeHttpFailure(code: Int, body: String): String {
+            val parsedError = runCatching {
+                JSONObject(body).optString("error").trim()
+            }.getOrNull().orEmpty()
+            if (parsedError.isNotBlank()) return "HTTP $code: $parsedError"
+            return when (code) {
+                429 -> "HTTP 429: AI service busy — retry shortly"
+                503 -> "HTTP 503: AI service temporarily unavailable"
+                else -> "HTTP $code: AI service temporarily unavailable"
+            }
         }
 
         /**
-         * Reasoning models may wrap JSON in prose or <think> blocks, so grab the outermost {...}.
+         * Extracts assistant text from Timecure's server proxy `{ content, ... }`
+         * with backward-compatible fallback to OpenAI `{ choices: [{ message: { content } }] }`.
+         */
+        fun extractReplyContent(rawJson: String): String {
+            val root = JSONObject(rawJson)
+            if (root.has("content")) {
+                return TimecureAiAgent.stripThinkTags(root.optString("content"))
+            }
+            val msgContent = root.optJSONArray("choices")
+                ?.optJSONObject(0)
+                ?.optJSONObject("message")
+                ?.optString("content")
+                .orEmpty()
+            return TimecureAiAgent.stripThinkTags(msgContent)
+        }
+
+        /**
+         * Reasoning responses may include prose or <think> blocks, so grab the outermost {...}.
          */
         fun parseChallenge(raw: String, difficulty: ChallengeDifficulty): CognitiveChallenge {
-            val start = raw.indexOf('{')
-            val end = raw.lastIndexOf('}')
+            val cleaned = TimecureAiAgent.stripThinkTags(raw)
+            val start = cleaned.indexOf('{')
+            val end = cleaned.lastIndexOf('}')
             require(start in 0 until end) { "Reply contained no JSON" }
-            val obj = JSONObject(raw.substring(start, end + 1))
+            val obj = JSONObject(cleaned.substring(start, end + 1))
             val question = obj.optString("question").trim()
             val answer = obj.optString("answer").trim()
             require(question.isNotEmpty() && answer.isNotEmpty()) { "JSON missing question or answer" }
