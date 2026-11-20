@@ -36,12 +36,12 @@ export default async function handler(req: any, res: any) {
       body: JSON.stringify({
         model,
         temperature: 0.5,
-        max_tokens: 220,
+        max_tokens: 800,
         messages: [
           {
             role: 'system',
             content:
-              'You are Timecure AI Coach (Android alarm + Pomodoro assistant). Reply concisely in 2-3 punchy sentences: propose the exact alarm time/difficulty and focus technique matching the user request.',
+              'You are Timecure AI Coach (Android alarm + Pomodoro assistant). Reply concisely in 2-3 punchy sentences with exact alarm time/difficulty and focus technique matching the request. Do not wrap answer in <think> tags.',
           },
           { role: 'user', content: prompt },
         ],
@@ -56,7 +56,13 @@ export default async function handler(req: any, res: any) {
     }
 
     const parsed = JSON.parse(raw);
-    const reply = parsed?.choices?.[0]?.message?.content?.trim() || '';
+    const msg = parsed?.choices?.[0]?.message || {};
+    const contentRaw = String(msg.content || msg.reasoning || '');
+    const reply = contentRaw
+      .replace(/<think>[\s\S]*?<\/think>/gi, '')
+      .trim()
+      .slice(0, 600);
+
     return res.status(200).json({ model, reply });
   } catch {
     return res.status(502).json({ error: 'Unable to reach Vercel AI Gateway.' });
