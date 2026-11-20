@@ -1,0 +1,145 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --tc-bg: #0c1219;
+    --tc-surface: #111821;
+    --tc-surface-low: #161f2a;
+    --tc-surface-high: #1f2a38;
+    --tc-surface-highest: #2a3646;
+    --tc-primary: #9ecaff;
+    --tc-on-primary: #003258;
+    --tc-primary-container: #00497d;
+    --tc-on-primary-container: #d1e4ff;
+    --tc-secondary: #bbc7db;
+    --tc-secondary-container: #3b4858;
+    --tc-tertiary: #ffb95c;
+    --tc-tertiary-container: #693c00;
+    --tc-on-surface: #e2e8f0;
+    --tc-on-surface-variant: #94a3b8;
+    --tc-outline: #475569;
+    --tc-outline-variant: #263242;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    background-color: var(--tc-bg);
+    color: var(--tc-on-surface);
+  }
+
+  body {
+    background-color: var(--tc-bg);
+    color: var(--tc-on-surface);
+    transition: background-color 320ms cubic-bezier(0.22, 1, 0.36, 1),
+      color 260ms ease;
+    overflow-x: hidden;
+  }
+}
+
+.font-serif-display {
+  font-family: 'Instrument Serif', Georgia, serif;
+}
+
+.font-mono-tech {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Tactile spring button feedback matching Android app feel */
+.tc-pressable {
+  transition: transform 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 220ms ease,
+    border-color 220ms ease,
+    box-shadow 220ms ease;
+}
+.tc-pressable:active {
+  transform: scale(0.955);
+}
+
+/* Subtle dot-grid engineering backdrop */
+.tc-grid-bg {
+  background-image: radial-gradient(
+    color-mix(in srgb, var(--tc-primary) 16%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 28px 28px;
+}
+
+@keyframes tc-orbit {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes tc-pulse-ring {
+  0%,
+  100% {
+    transform: scale(0.92);
+    opacity: 0.45;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.9;
+  }
+}
+
+@keyframes tc-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-8px);
+  }
+  40% {
+    transform: translateX(8px);
+  }
+  60% {
+    transform: translateX(-5px);
+  }
+  80% {
+    transform: translateX(5px);
+  }
+}
+
+@keyframes tc-sweep {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(260%);
+    opacity: 0;
+  }
+}
+
+.animate-tc-orbit {
+  animation: tc-orbit 12s linear infinite;
+}
+
+.animate-tc-pulse {
+  animation: tc-pulse-ring 2.6s ease-in-out infinite;
+}
+
+.animate-tc-shake {
+  animation: tc-shake 340ms cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+
+.animate-tc-sweep {
+  animation: tc-sweep 380ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-tc-orbit,
+  .animate-tc-pulse,
+  .animate-tc-shake,
+  .animate-tc-sweep {
+    animation: none !important;
+  }
+}
