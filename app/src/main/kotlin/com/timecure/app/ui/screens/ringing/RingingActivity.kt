@@ -11,18 +11,32 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -30,15 +44,15 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Snooze
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -55,8 +69,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.timecure.app.MainActivity
 import com.timecure.app.TimecureApp
 import com.timecure.app.alarm.AlarmActions
@@ -333,6 +348,7 @@ class RingingActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun MissionRunnerScreen(
     alarm: Alarm?,
@@ -351,6 +367,7 @@ private fun MissionRunnerScreen(
 
     val haptic = LocalHapticFeedback.current
     val reducedMotion = rememberReducedMotion()
+    val imeVisible = WindowInsets.isImeVisible
     var missionIndex by remember { mutableIntStateOf(0) }
 
     val goal = alarm?.goal?.takeIf { it.isNotBlank() } ?: "Win the morning"
@@ -365,6 +382,11 @@ private fun MissionRunnerScreen(
             wallpaperUri = alarm?.wallpaperUri.orEmpty(),
             modifier = Modifier.fillMaxSize()
         )
+        RingingBackdropAtmosphere(
+            primaryGlow = MaterialTheme.colorScheme.primary,
+            secondaryGlow = MaterialTheme.colorScheme.tertiary
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -373,7 +395,7 @@ private fun MissionRunnerScreen(
                 .navigationBarsPadding()
                 .imePadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+                .padding(horizontal = 20.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -382,74 +404,162 @@ private fun MissionRunnerScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = CircleShape) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f),
+                    shape = CircleShape,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Timer, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                        Icon(
+                            Icons.Default.Timer,
+                            contentDescription = null,
+                            modifier = Modifier.size(15.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
                         Spacer(Modifier.width(6.dp))
-                        Text(elapsedText, style = MaterialTheme.typography.labelLarge)
+                        Text(elapsedText, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                     }
                 }
                 if (isTestSimulation) {
-                    IconButton(onClick = onDone) { Icon(Icons.Default.Close, contentDescription = "Close") }
-                } else {
-                    Text(
-                        text = if (isAllSolved) "Complete" else "Mission ${missionIndex + 1} of ${missions.size}",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-
-            if (missions.size > 1) {
-                val progress = if (isAllSolved) 1f else missionIndex.toFloat() / missions.size.coerceAtLeast(1)
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.fillMaxWidth().height(6.dp)
-                )
-            }
-
-            if (alarm != null) {
-                Text(
-                    text = "${alarm.formattedTime} ${alarm.amPm} • $goal",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center
-                )
-            }
-
-            if (isAllSolved) {
-                VictoryCard(
-                    goal = goal,
-                    userName = userName,
-                    elapsedSeconds = elapsedSeconds,
-                    wrongAttempts = 0,
-                    wakeCheckArmed = alarm?.wakeCheckEnabled == true,
-                    practiceMode = false,
-                    reducedMotion = reducedMotion,
-                    onDone = onDone,
-                    onLaunchFocusSprint = { onLaunchFocusSprint(goal) }
-                )
-            } else {
-                val currentMission = missions.getOrNull(missionIndex) ?: missions.last()
-                androidx.compose.runtime.key(missionIndex, currentMission.type) {
-                    MissionPlayView(
-                        config = currentMission,
-                        goal = goal,
-                        isPreview = false,
-                        onMissionComplete = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            if (missionIndex + 1 >= missions.size) {
-                                onAllMissionsComplete()
-                            } else {
-                                missionIndex++
-                            }
+                    Surface(
+                        onClick = onDone,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f),
+                        shape = CircleShape,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Stop test", modifier = Modifier.size(15.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Stop Test", style = MaterialTheme.typography.labelLarge)
                         }
-                    )
+                    }
+                } else {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f),
+                        shape = CircleShape,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    ) {
+                        Text(
+                            text = if (isAllSolved) "Complete" else "Mission ${missionIndex + 1} of ${missions.size}",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                        )
+                    }
                 }
+            }
 
+            StepPillBar(
+                currentStep = missionIndex + 1,
+                totalSteps = missions.size,
+                isAllSolved = isAllSolved
+            )
+
+            AnimatedVisibility(
+                visible = !imeVisible || isAllSolved,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (alarm != null) {
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                text = alarm.formattedTime,
+                                style = MaterialTheme.typography.displayMedium.copy(
+                                    fontSize = 46.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    letterSpacing = (-1).sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = alarm.amPm,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(start = 4.dp, bottom = 7.dp)
+                            )
+                        }
+                    }
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.88f),
+                        shape = CircleShape,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Flag,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = goal,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+
+            AnimatedContent(
+                targetState = isAllSolved to missionIndex,
+                transitionSpec = {
+                    (fadeIn(tween(220)) + slideInHorizontally { it / 12 }) togetherWith
+                        (fadeOut(tween(150)) + slideOutHorizontally { -it / 12 })
+                },
+                label = "mission_stage_anim"
+            ) { (solved, idx) ->
+                if (solved) {
+                    VictoryCard(
+                        goal = goal,
+                        userName = userName,
+                        elapsedSeconds = elapsedSeconds,
+                        wrongAttempts = 0,
+                        wakeCheckArmed = alarm?.wakeCheckEnabled == true,
+                        practiceMode = false,
+                        reducedMotion = reducedMotion,
+                        onDone = onDone,
+                        onLaunchFocusSprint = { onLaunchFocusSprint(goal) }
+                    )
+                } else {
+                    val currentMission = missions.getOrNull(idx) ?: missions.last()
+                    androidx.compose.runtime.key(idx, currentMission.type) {
+                        MissionPlayView(
+                            config = currentMission,
+                            goal = goal,
+                            isPreview = false,
+                            onMissionComplete = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                if (missionIndex + 1 >= missions.size) {
+                                    onAllMissionsComplete()
+                                } else {
+                                    missionIndex++
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+
+            if (!isAllSolved) {
                 val canSnooze = !isTestSimulation &&
                     alarm?.snoozeEnabled == true &&
                     (alarm.snoozeMaxCount == 0 || snoozesUsed < alarm.snoozeMaxCount)
@@ -459,13 +569,15 @@ private fun MissionRunnerScreen(
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             onSnooze()
                         },
-                        modifier = Modifier.fillMaxWidth()
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier.fillMaxWidth().height(52.dp)
                     ) {
                         Icon(Icons.Default.Snooze, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            text = if (alarm.snoozeMaxCount <= 0) "Snooze ${alarm.snoozeIntervalMinutes}m"
-                            else "Snooze ${alarm.snoozeIntervalMinutes}m (${(alarm.snoozeMaxCount - snoozesUsed).coerceAtLeast(1)} left)"
+                            text = if (alarm.snoozeMaxCount <= 0) "Snooze ${alarm.snoozeIntervalMinutes} min"
+                            else "Snooze ${alarm.snoozeIntervalMinutes} min (${(alarm.snoozeMaxCount - snoozesUsed).coerceAtLeast(1)} left)",
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }

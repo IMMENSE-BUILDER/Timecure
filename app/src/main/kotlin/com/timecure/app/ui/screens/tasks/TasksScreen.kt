@@ -19,8 +19,6 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -39,17 +37,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddLocationAlt
 import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
@@ -75,6 +71,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -99,7 +96,7 @@ private enum class TaskFilter(val label: String) {
     TIME("Time")
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TasksScreen(
     tasks: List<SmartTask>,
@@ -470,59 +467,98 @@ private fun RadarStatusPill(
     reducedMotion: Boolean,
     onRefreshGps: () -> Unit
 ) {
-    val dotAlphaState: State<Float> = if (radarActive && !reducedMotion) {
+    val dotPulseState: State<Float> = if (radarActive && !reducedMotion) {
         val inf = rememberInfiniteTransition(label = "radar_dot")
         inf.animateFloat(
-            initialValue = 0.35f,
+            initialValue = 0f,
             targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
-            label = "radar_alpha"
+            animationSpec = infiniteRepeatable(tween(1500), RepeatMode.Restart),
+            label = "radar_wave"
         )
     } else {
-        rememberUpdatedState(1f)
+        rememberUpdatedState(0.5f)
     }
     val dotColor = if (radarActive) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outline
 
     Surface(
-        color = if (radarActive) MaterialTheme.colorScheme.primaryContainer
+        color = if (radarActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
         else MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(22.dp),
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (radarActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+        ),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Canvas(modifier = Modifier.size(10.dp)) {
-                drawCircle(color = dotColor.copy(alpha = dotAlphaState.value))
+            Box(
+                modifier = Modifier.size(34.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val c = Offset(size.width / 2f, size.height / 2f)
+                    if (radarActive) {
+                        val t = dotPulseState.value
+                        drawCircle(
+                            color = dotColor.copy(alpha = (1f - t) * 0.45f),
+                            radius = size.minDimension * (0.24f + 0.25f * t),
+                            center = c
+                        )
+                    }
+                    drawCircle(
+                        color = dotColor.copy(alpha = 0.2f),
+                        radius = size.minDimension * 0.34f,
+                        center = c
+                    )
+                    drawCircle(
+                        color = dotColor,
+                        radius = size.minDimension * 0.17f,
+                        center = c
+                    )
+                }
             }
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = if (radarActive)
-                        "Location Radar Active • Watching $watchedPlaceCount ${if (watchedPlaceCount == 1) "place" else "places"}"
+                        "Location Radar Active • $watchedPlaceCount ${if (watchedPlaceCount == 1) "place" else "places"}"
                     else
                         "$totalTasks active ${if (totalTasks == 1) "task" else "tasks"} scheduled",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
                     color = if (radarActive) MaterialTheme.colorScheme.onPrimaryContainer
                     else MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = if (radarActive)
-                        "Triggers alerts automatically when entering marked perimeters"
+                        "Fires automatically when entering marked zones"
                     else
-                        "Add a location task to arm continuous background zone radar",
-                    style = MaterialTheme.typography.labelSmall,
+                        "Add a location task to arm continuous zone radar",
+                    style = MaterialTheme.typography.bodySmall,
                     color = if (radarActive) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                     else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            IconButton(onClick = onRefreshGps) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = "Refresh current GPS position"
-                )
+            Surface(
+                onClick = onRefreshGps,
+                color = if (radarActive) MaterialTheme.colorScheme.surface.copy(alpha = 0.4f)
+                else MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = CircleShape,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Refresh current GPS position",
+                        modifier = Modifier.size(18.dp),
+                        tint = if (radarActive) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onSurface
+                    )
+                }
             }
         }
     }
@@ -541,7 +577,7 @@ private fun PlaceChipCard(
                 place.latitude, place.longitude
             )
             LocationGeoMath.formatDistance(m)
-        } ?: "${place.radiusMeters}m zone"
+        } ?: "${place.radiusMeters}m"
     }
     val isInsideNow = remember(place, currentLocation) {
         currentLocation?.let { loc ->
@@ -556,61 +592,76 @@ private fun PlaceChipCard(
         onClick = onClick,
         color = if (isInsideNow) MaterialTheme.colorScheme.tertiaryContainer
         else MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(20.dp),
         border = BorderStroke(
             width = if (isInsideNow) 1.5.dp else 1.dp,
             color = if (isInsideNow) MaterialTheme.colorScheme.tertiary
-            else MaterialTheme.colorScheme.outlineVariant
+            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
         )
     ) {
         Column(
             modifier = Modifier
-                .width(156.dp)
+                .width(164.dp)
                 .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = placeTagIcon(place.tag),
-                    contentDescription = null,
-                    tint = if (isInsideNow) MaterialTheme.colorScheme.onTertiaryContainer
-                    else MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
-                )
                 Surface(
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    color = if (isInsideNow) MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f)
+                    else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                    shape = CircleShape,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = placeTagIcon(place.tag),
+                            contentDescription = null,
+                            tint = if (isInsideNow) MaterialTheme.colorScheme.onTertiaryContainer
+                            else MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                }
+                Surface(
+                    color = if (isInsideNow) MaterialTheme.colorScheme.tertiary
+                    else MaterialTheme.colorScheme.surfaceContainerHigh,
                     shape = CircleShape
                 ) {
                     Text(
                         text = if (isInsideNow) "Inside" else distanceLabel,
                         style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        fontWeight = FontWeight.Bold,
+                        color = if (isInsideNow) MaterialTheme.colorScheme.onTertiary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
                     )
                 }
             }
-            Text(
-                text = place.name,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = "${place.tag.displayName} • ${place.radiusMeters}m",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = place.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "${place.tag.displayName} • ${place.radiusMeters}m zone",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (isInsideNow) MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SmartTaskRow(
     task: SmartTask,
@@ -625,7 +676,7 @@ private fun SmartTaskRow(
     val interaction = remember { MutableInteractionSource() }
     val isPressed by interaction.collectIsPressedAsState()
     val pressScale by animateFloatAsState(
-        targetValue = if (isPressed && !reducedMotion) 0.97f else 1f,
+        targetValue = if (isPressed && !reducedMotion) 0.975f else 1f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessHigh
@@ -639,8 +690,16 @@ private fun SmartTaskRow(
                 currentLocation.latitude, currentLocation.longitude,
                 place.latitude, place.longitude
             )
-            "${LocationGeoMath.formatDistance(d)} away"
+            LocationGeoMath.formatDistance(d)
         } else null
+    }
+
+    val isLocation = task.triggerType == TaskTriggerType.LOCATION
+    val triggerSummary = if (isLocation) {
+        val placeName = place?.name ?: "Unlinked place"
+        "${task.geofenceMode.displayName}: $placeName (${task.radiusMeters}m)"
+    } else {
+        "${task.formattedTime()} • ${task.daysSummary}"
     }
 
     Surface(
@@ -648,8 +707,11 @@ private fun SmartTaskRow(
         interactionSource = interaction,
         color = if (task.isCompleted) MaterialTheme.colorScheme.surfaceContainerLowest
         else MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = MaterialTheme.shapes.large,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        shape = RoundedCornerShape(22.dp),
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (task.isCompleted) 0.35f else 0.65f)
+        ),
         modifier = Modifier
             .fillMaxWidth()
             .graphicsLayer {
@@ -659,34 +721,52 @@ private fun SmartTaskRow(
             }
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Checkbox(
-                    checked = task.isCompleted,
-                    onCheckedChange = onToggleCompleted
-                )
+                Surface(
+                    onClick = { onToggleCompleted(!task.isCompleted) },
+                    shape = CircleShape,
+                    color = if (task.isCompleted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = if (task.isCompleted) null else BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier.size(26.dp)
+                ) {
+                    if (task.isCompleted) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = "Mark incomplete",
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = task.title,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None
+                        fontWeight = FontWeight.Bold,
+                        textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     if (task.notes.isNotBlank()) {
                         Text(
                             text = task.notes,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
+                            maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
+                Spacer(Modifier.width(8.dp))
                 Switch(
                     checked = task.isEnabled && !task.isCompleted,
                     onCheckedChange = onToggleEnabled,
@@ -694,69 +774,84 @@ private fun SmartTaskRow(
                 )
             }
 
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+            // Clean inline metadata footer row (zero chip soup)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                AssistChip(
-                    onClick = onEdit,
-                    leadingIcon = {
-                        Icon(
-                            imageVector = if (task.triggerType == TaskTriggerType.LOCATION)
-                                Icons.Default.LocationOn else Icons.Default.Schedule,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    },
-                    label = {
-                        val triggerSummary = if (task.triggerType == TaskTriggerType.LOCATION) {
-                            val placeName = place?.name ?: "Unlinked place"
-                            "${task.geofenceMode.displayName}: $placeName (${task.radiusMeters}m)"
-                        } else {
-                            "${task.formattedTime()} • ${task.daysSummary}"
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        color = if (isLocation) MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.72f)
+                        else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f),
+                        shape = CircleShape,
+                        modifier = Modifier.weight(1f, fill = false)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (isLocation) Icons.Default.LocationOn else Icons.Default.Schedule,
+                                contentDescription = null,
+                                tint = if (isLocation) MaterialTheme.colorScheme.onTertiaryContainer
+                                else MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(Modifier.width(5.dp))
+                            Text(
+                                text = triggerSummary,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isLocation) MaterialTheme.colorScheme.onTertiaryContainer
+                                else MaterialTheme.colorScheme.onSecondaryContainer,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
-                        Text(triggerSummary)
                     }
-                )
 
-                AssistChip(
-                    onClick = onEdit,
-                    leadingIcon = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = if (task.alertMode == TaskAlertMode.ALARM)
                                 Icons.Default.Alarm else Icons.Default.NotificationsActive,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
+                            contentDescription = task.alertMode.displayName,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(14.dp)
                         )
-                    },
-                    label = { Text(task.alertMode.displayName) }
-                )
-
-                if (liveDistText != null) {
-                    AssistChip(
-                        onClick = onEdit,
-                        leadingIcon = {
-                            Icon(
-                                Icons.Default.MyLocation,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
+                        if (liveDistText != null) {
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = liveDistText,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                        },
-                        label = { Text(liveDistText) }
-                    )
+                        }
+                    }
                 }
 
-                AssistChip(
+                Spacer(Modifier.width(8.dp))
+
+                Surface(
                     onClick = onTestFire,
-                    leadingIcon = {
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.75f),
+                    shape = CircleShape,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
                         Icon(
                             Icons.Default.PlayArrow,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
+                            contentDescription = "Test task trigger",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(17.dp)
                         )
-                    },
-                    label = { Text("Test") }
-                )
+                    }
+                }
             }
         }
     }

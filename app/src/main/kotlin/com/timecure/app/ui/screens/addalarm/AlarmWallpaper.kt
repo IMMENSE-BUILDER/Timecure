@@ -233,6 +233,16 @@ fun AlarmWallpaperBackdrop(
 
     if (preset == AlarmWallpaperPreset.NONE && photo == null) return
 
+    val surfaceColor = MaterialTheme.colorScheme.surface
+    val cinematicScrim = remember(surfaceColor) {
+        Brush.verticalGradient(
+            0.0f to surfaceColor.copy(alpha = 0.52f),
+            0.38f to surfaceColor.copy(alpha = 0.62f),
+            0.72f to surfaceColor.copy(alpha = 0.84f),
+            1.0f to surfaceColor.copy(alpha = 0.96f)
+        )
+    }
+
     Box(modifier = modifier) {
         if (photo != null) {
             Image(
@@ -244,7 +254,7 @@ fun AlarmWallpaperBackdrop(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))
+                    .background(cinematicScrim)
             )
         } else if (preset != null) {
             Box(
@@ -252,33 +262,10 @@ fun AlarmWallpaperBackdrop(
                     .fillMaxSize()
                     .background(Brush.verticalGradient(preset.colors))
             )
-            if (preset.quote.isNotBlank()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = 42.dp),
-                    contentAlignment = Alignment.BottomCenter
-                ) {
-                    Surface(
-                        color = preset.quoteHighlightBg ?: Color.Black.copy(alpha = 0.35f),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text(
-                            text = preset.quote.replace("\n", " "),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            fontStyle = FontStyle.Italic,
-                            color = if (preset.quoteHighlightBg != null) preset.quoteTextColor
-                            else Color.White,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                        )
-                    }
-                }
-            }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.68f))
+                    .background(cinematicScrim)
             )
         }
     }

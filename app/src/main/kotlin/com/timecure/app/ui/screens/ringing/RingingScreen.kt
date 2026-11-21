@@ -5,7 +5,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -13,8 +13,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,52 +36,55 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Snooze
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.timecure.app.alarm.AlarmScheduler
 import com.timecure.app.model.Alarm
 import com.timecure.app.model.ChallengeSource
@@ -92,8 +96,77 @@ import com.timecure.app.ui.components.rememberReducedMotion
 import com.timecure.app.ui.screens.addalarm.AlarmWallpaperBackdrop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
+
+/**
+ * Shared atmospheric radial lighting behind lock-screen alarm / task / wake-check takeovers.
+ */
+@Composable
+internal fun RingingBackdropAtmosphere(
+    primaryGlow: Color,
+    secondaryGlow: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier.fillMaxSize()) {
+        drawRect(
+            brush = Brush.radialGradient(
+                colors = listOf(primaryGlow.copy(alpha = 0.24f), Color.Transparent),
+                center = Offset(size.width * 0.5f, size.height * 0.22f),
+                radius = size.minDimension * 0.85f
+            )
+        )
+        drawRect(
+            brush = Brush.radialGradient(
+                colors = listOf(secondaryGlow.copy(alpha = 0.14f), Color.Transparent),
+                center = Offset(size.width * 0.85f, size.height * 0.82f),
+                radius = size.minDimension * 0.72f
+            )
+        )
+    }
+}
+
+/**
+ * Segmented capsule step bar replacing generic thin progress bars.
+ */
+@Composable
+internal fun StepPillBar(
+    currentStep: Int,
+    totalSteps: Int,
+    isAllSolved: Boolean,
+    modifier: Modifier = Modifier
+) {
+    if (totalSteps <= 1) return
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        for (idx in 1..totalSteps) {
+            val done = isAllSolved || idx < currentStep
+            val active = !isAllSolved && idx == currentStep
+            val barColor = when {
+                done -> MaterialTheme.colorScheme.primary
+                active -> MaterialTheme.colorScheme.tertiary
+                else -> MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f)
+            }
+            val height by animateDpAsState(
+                targetValue = if (active) 7.dp else 5.dp,
+                animationSpec = spring(stiffness = Spring.StiffnessMedium),
+                label = "step_pill_h"
+            )
+            Box(
+                modifier = Modifier
+                    .weight(if (active) 1.45f else 1f)
+                    .height(height)
+                    .clip(CircleShape)
+                    .background(barColor)
+            )
+        }
+    }
+}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -131,7 +204,6 @@ fun RingingScreen(
 
     val shakeOffset = remember { Animatable(0f) }
 
-    // Block accidental back press while an actual alarm is ringing
     BackHandler(enabled = !practiceMode && !isAllSolved && !isTestSimulation) {
         backNotice = true
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -140,13 +212,6 @@ fun RingingScreen(
             backNotice = false
         }
     }
-
-    val progressTarget = if (isAllSolved) 1f else (currentStep - 1).toFloat() / totalSteps.coerceAtLeast(1)
-    val animatedProgress by animateFloatAsState(
-        targetValue = progressTarget,
-        animationSpec = if (reducedMotion) tween(0) else spring(stiffness = Spring.StiffnessMediumLow),
-        label = "step_progress"
-    )
 
     fun triggerWrongFeedback(msg: String) {
         isError = true
@@ -178,8 +243,12 @@ fun RingingScreen(
 
     val goal = alarm?.goal?.takeIf { it.isNotBlank() } ?: "Win the morning"
     val timeLabel = alarm?.let { "${it.formattedTime} ${it.amPm}" } ?: "Timecure"
+    val dateLabel = remember {
+        SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date())
+    }
     val elapsedText = String.format(Locale.getDefault(), "%02d:%02d", elapsedSeconds / 60, elapsedSeconds % 60)
     val nextDelay = AlarmScheduler.reringDelayMinutes(rerings)
+    val primaryGlow = if (rerings > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
 
     Box(
         modifier = modifier
@@ -192,6 +261,11 @@ fun RingingScreen(
                 modifier = Modifier.fillMaxSize()
             )
         }
+        RingingBackdropAtmosphere(
+            primaryGlow = primaryGlow,
+            secondaryGlow = MaterialTheme.colorScheme.tertiary
+        )
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -201,374 +275,508 @@ fun RingingScreen(
                 .imePadding()
                 .padding(top = 4.dp)
         ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Top bar: elapsed timer, mode badge, and exit button (only in Practice / Simulation)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceContainerLow,
-                    shape = CircleShape
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                            .semantics { liveRegion = LiveRegionMode.Polite },
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.Timer,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = elapsedText,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-
-                when {
-                    practiceMode -> TextButton(onClick = onDone) { Text("Exit Dojo") }
-                    isTestSimulation -> IconButton(onClick = onDone) {
-                        Icon(Icons.Default.Close, contentDescription = "Stop test alarm")
-                    }
-                    else -> Text(
-                        text = "Step ${currentStep.coerceAtMost(totalSteps)} of $totalSteps",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            // Multi-step progress bar
-            if (totalSteps > 1) {
-                LinearProgressIndicator(
-                    progress = { animatedProgress },
-                    modifier = Modifier.fillMaxWidth().height(6.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                )
-                Spacer(Modifier.height(12.dp))
-            }
-
-            // Collapsible hero clock + aura (collapses neatly when keyboard opens so question stays above fold)
-            AnimatedVisibility(
-                visible = !imeVisible || isAllSolved,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    if (rerings > 0) {
-                        AssistChip(
-                            onClick = {},
-                            label = {
-                                Text(
-                                    "Escalated re-ring #$rerings — max volume",
-                                    color = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Default.Warning,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.error
-                                )
-                            }
-                        )
-                        Spacer(Modifier.height(6.dp))
-                    } else if (wakeCheck) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.tertiaryContainer,
-                            shape = MaterialTheme.shapes.small
-                        ) {
-                            Text(
-                                text = "5-minute anti-relapse check — confirm you are up",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                            )
-                        }
-                        Spacer(Modifier.height(8.dp))
-                    } else if (practiceMode) {
-                        Text(
-                            text = "BRAIN WARM-UP DOJO",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(Modifier.height(4.dp))
-                    }
-
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier.size(if (practiceMode) 110.dp else 184.dp)
-                    ) {
-                        if (!isAllSolved) {
-                            BreathingAuraRing(
-                                primaryColor = if (rerings > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                                accentColor = MaterialTheme.colorScheme.tertiary,
-                                urgent = rerings > 0,
-                                reducedMotion = reducedMotion,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = if (practiceMode) "Dojo" else alarm?.formattedTime ?: "Test",
-                                style = if (practiceMode) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.displayLarge,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                textAlign = TextAlign.Center
-                            )
-                            if (!practiceMode && alarm != null) {
-                                Text(
-                                    text = alarm.amPm,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-
-                    Surface(
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        shape = MaterialTheme.shapes.medium
-                    ) {
-                        Text(
-                            text = "Goal: $goal",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                        )
-                    }
-                    val promptText = alarm?.wakePrompt?.takeIf { it.isNotBlank() }
-                    if (promptText != null) {
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            text = promptText,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(horizontal = 12.dp)
-                        )
-                    }
-                    Spacer(Modifier.height(16.dp))
-                }
-            }
-
-            // Compact inline clock header when IME is open
-            AnimatedVisibility(visible = imeVisible && !isAllSolved) {
+                // Sleek Top HUD Bar
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = if (practiceMode) "Brain Warm-Up Dojo" else "$timeLabel  •  $goal",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f),
+                        shape = CircleShape,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .padding(horizontal = 12.dp, vertical = 7.dp)
+                                .semantics { liveRegion = LiveRegionMode.Polite },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Timer,
+                                contentDescription = null,
+                                modifier = Modifier.size(15.dp),
+                                tint = primaryGlow
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = elapsedText,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+
+                    when {
+                        practiceMode -> TextButton(onClick = onDone) { Text("Exit Dojo") }
+                        isTestSimulation -> Surface(
+                            onClick = onDone,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f),
+                            shape = CircleShape,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "Stop test alarm", modifier = Modifier.size(15.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Stop Test", style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
+                        else -> Surface(
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f),
+                            shape = CircleShape,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        ) {
+                            Text(
+                                text = "Step ${currentStep.coerceAtMost(totalSteps)} of $totalSteps",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (totalSteps > 1) {
+                    Spacer(Modifier.height(12.dp))
+                    StepPillBar(
+                        currentStep = currentStep,
+                        totalSteps = totalSteps,
+                        isAllSolved = isAllSolved
                     )
                 }
-            }
 
-            // Main Challenge OR Victory state
-            AnimatedContent(
-                targetState = isAllSolved,
-                transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(150)) },
-                label = "ringing_content"
-            ) { solved ->
-                if (solved) {
-                    VictoryCard(
-                        goal = goal,
-                        userName = userName,
-                        elapsedSeconds = elapsedSeconds,
-                        wrongAttempts = wrongAttempts,
-                        wakeCheckArmed = !practiceMode && !isTestSimulation && !wakeCheck && (alarm?.wakeCheckEnabled == true),
-                        practiceMode = practiceMode,
-                        reducedMotion = reducedMotion,
-                        onDone = onDone,
-                        onLaunchFocusSprint = onLaunchFocusSprint?.let { launch -> { launch(goal) } }
-                    )
-                } else {
-                    ElevatedCard(
-                        colors = CardDefaults.elevatedCardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .offset { IntOffset(shakeOffset.value.roundToInt(), 0) }
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(20.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            if (isLoadingChallenge || challenge == null) {
-                                Spacer(Modifier.height(16.dp))
-                                CircularProgressIndicator(modifier = Modifier.size(36.dp))
-                                Spacer(Modifier.height(12.dp))
-                                Text(
-                                    "Preparing your cognitive challenge...",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(Modifier.height(16.dp))
-                            } else {
-                                // Challenge metadata header
+                Spacer(Modifier.height(10.dp))
+
+                // Dramatic Collapsible Hero Clock + Goal Pill
+                AnimatedVisibility(
+                    visible = !imeVisible || isAllSolved,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (rerings > 0) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.errorContainer,
+                                shape = CircleShape,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.45f))
+                            ) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = if (challenge.source == ChallengeSource.AI)
-                                                Icons.Default.AutoAwesome else Icons.Default.Memory,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(Modifier.width(6.dp))
+                                    Icon(
+                                        Icons.Default.Warning,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        "ESCALATED RE-RING #$rerings • MAX VOLUME",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                        } else if (wakeCheck) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.tertiaryContainer,
+                                shape = CircleShape
+                            ) {
+                                Text(
+                                    text = "ANTI-RELAPSE CHECK • CONFIRM AWAKE",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.6.sp,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                )
+                            }
+                            Spacer(Modifier.height(8.dp))
+                        } else if (practiceMode) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                                shape = CircleShape
+                            ) {
+                                Text(
+                                    text = "BRAIN WARM-UP DOJO",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp)
+                                )
+                            }
+                            Spacer(Modifier.height(6.dp))
+                        }
+
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.size(if (practiceMode) 112.dp else 192.dp)
+                        ) {
+                            if (!isAllSolved) {
+                                BreathingAuraRing(
+                                    primaryColor = primaryGlow,
+                                    accentColor = MaterialTheme.colorScheme.tertiary,
+                                    urgent = rerings > 0,
+                                    reducedMotion = reducedMotion,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                if (!practiceMode) {
+                                    Text(
+                                        text = dateLabel.uppercase(Locale.getDefault()),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        letterSpacing = 1.1.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Row(verticalAlignment = Alignment.Bottom) {
+                                    Text(
+                                        text = if (practiceMode) "Dojo" else alarm?.formattedTime ?: "Test",
+                                        style = if (practiceMode) {
+                                            MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold)
+                                        } else {
+                                            MaterialTheme.typography.displayLarge.copy(
+                                                fontSize = 58.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                letterSpacing = (-1.5).sp
+                                            )
+                                        },
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    if (!practiceMode && alarm != null) {
                                         Text(
-                                            text = if (challenge.source == ChallengeSource.AI)
-                                                "AI Coach" else challenge.category.displayName,
-                                            style = MaterialTheme.typography.labelLarge,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                    Surface(
-                                        color = MaterialTheme.colorScheme.secondaryContainer,
-                                        shape = MaterialTheme.shapes.small
-                                    ) {
-                                        Text(
-                                            text = challenge.difficulty.displayName,
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                            text = alarm.amPm,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = primaryGlow,
+                                            modifier = Modifier.padding(start = 4.dp, bottom = 10.dp)
                                         )
                                     }
                                 }
+                            }
+                        }
 
-                                Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(6.dp))
 
-                                Text(
-                                    text = challenge.question,
-                                    style = MaterialTheme.typography.titleLarge,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.fillMaxWidth()
+                        // Goal Capsule
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.88f),
+                            shape = CircleShape,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Flag,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(15.dp)
                                 )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = goal,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
 
-                                Spacer(Modifier.height(16.dp))
+                        val promptText = alarm?.wakePrompt?.takeIf { it.isNotBlank() }
+                        if (promptText != null) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = promptText,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+                        }
+                        Spacer(Modifier.height(18.dp))
+                    }
+                }
 
-                                val stroop = challenge.stroop
-                                if (stroop != null) {
-                                    StroopWordBanner(stroop = stroop)
-                                    Spacer(Modifier.height(16.dp))
-                                    if (isError) {
+                // Compact Header When Keyboard Is Open
+                AnimatedVisibility(visible = imeVisible && !isAllSolved) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (practiceMode) "Brain Warm-Up Dojo" else timeLabel,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Text(
+                                text = goal,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(start = 12.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Main Challenge Card OR Victory Card
+                AnimatedContent(
+                    targetState = isAllSolved,
+                    transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(150)) },
+                    label = "ringing_content"
+                ) { solved ->
+                    if (solved) {
+                        VictoryCard(
+                            goal = goal,
+                            userName = userName,
+                            elapsedSeconds = elapsedSeconds,
+                            wrongAttempts = wrongAttempts,
+                            wakeCheckArmed = !practiceMode && !isTestSimulation && !wakeCheck && (alarm?.wakeCheckEnabled == true),
+                            practiceMode = practiceMode,
+                            reducedMotion = reducedMotion,
+                            onDone = onDone,
+                            onLaunchFocusSprint = onLaunchFocusSprint?.let { launch -> { launch(goal) } }
+                        )
+                    } else {
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.94f),
+                            shape = RoundedCornerShape(28.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
+                            tonalElevation = 4.dp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .offset { IntOffset(shakeOffset.value.roundToInt(), 0) }
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(22.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                if (isLoadingChallenge || challenge == null) {
+                                    Spacer(Modifier.height(20.dp))
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(34.dp),
+                                        strokeWidth = 3.dp
+                                    )
+                                    Spacer(Modifier.height(14.dp))
+                                    Text(
+                                        "Preparing your cognitive challenge...",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(Modifier.height(20.dp))
+                                } else {
+                                    // Refined Challenge Metadata Row
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Surface(
+                                                color = MaterialTheme.colorScheme.primaryContainer,
+                                                shape = CircleShape,
+                                                modifier = Modifier.size(30.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        imageVector = if (challenge.source == ChallengeSource.AI)
+                                                            Icons.Default.AutoAwesome else Icons.Default.Memory,
+                                                        contentDescription = null,
+                                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(
+                                                text = if (challenge.source == ChallengeSource.AI)
+                                                    "Timecure AI" else challenge.category.displayName,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                        Surface(
+                                            color = MaterialTheme.colorScheme.secondaryContainer,
+                                            shape = CircleShape
+                                        ) {
+                                            Text(
+                                                text = challenge.difficulty.displayName,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(Modifier.height(18.dp))
+
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 0.75f),
+                                        shape = RoundedCornerShape(20.dp),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
                                         Text(
-                                            text = errorMessage,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.padding(bottom = 10.dp)
+                                            text = challenge.question,
+                                            style = MaterialTheme.typography.titleLarge.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                lineHeight = 30.sp
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp)
                                         )
                                     }
-                                    // 2x2 large 56dp M3 tap buttons for Stroop
-                                    val chunked = stroop.options.chunked(2)
-                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        chunked.forEach { rowOptions ->
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                            ) {
-                                                rowOptions.forEach { option ->
-                                                    FilledTonalButton(
-                                                        onClick = { submit(option) },
-                                                        modifier = Modifier
-                                                            .weight(1f)
-                                                            .height(54.dp)
-                                                            .semantics { contentDescription = "Answer $option" }
-                                                    ) {
-                                                        Text(
-                                                            text = option,
-                                                            style = MaterialTheme.typography.titleSmall
-                                                        )
+
+                                    Spacer(Modifier.height(16.dp))
+
+                                    val stroop = challenge.stroop
+                                    if (stroop != null) {
+                                        StroopWordBanner(stroop = stroop)
+                                        Spacer(Modifier.height(16.dp))
+                                        if (isError) {
+                                            Text(
+                                                text = errorMessage,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.padding(bottom = 10.dp)
+                                            )
+                                        }
+                                        val chunked = stroop.options.chunked(2)
+                                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            chunked.forEach { rowOptions ->
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                ) {
+                                                    rowOptions.forEach { option ->
+                                                        FilledTonalButton(
+                                                            onClick = { submit(option) },
+                                                            shape = RoundedCornerShape(16.dp),
+                                                            modifier = Modifier
+                                                                .weight(1f)
+                                                                .height(56.dp)
+                                                                .semantics { contentDescription = "Answer $option" }
+                                                        ) {
+                                                            Text(
+                                                                text = option,
+                                                                style = MaterialTheme.typography.titleSmall,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             }
                                         }
-                                    }
-                                } else {
-                                    OutlinedTextField(
-                                        value = userAnswer,
-                                        onValueChange = {
-                                            userAnswer = it
-                                            isError = false
-                                        },
-                                        label = { Text("Your answer") },
-                                        isError = isError,
-                                        supportingText = {
-                                            if (isError) {
-                                                Text(errorMessage, color = MaterialTheme.colorScheme.error)
-                                            }
-                                        },
-                                        keyboardOptions = KeyboardOptions(
-                                            keyboardType = if (challenge.wantsNumericKeyboard)
-                                                KeyboardType.Number else KeyboardType.Text,
-                                            imeAction = ImeAction.Done
-                                        ),
-                                        keyboardActions = KeyboardActions(onDone = { submit(userAnswer) }),
-                                        singleLine = true,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-
-                                    Spacer(Modifier.height(12.dp))
-
-                                    Button(
-                                        onClick = { submit(userAnswer) },
-                                        modifier = Modifier.fillMaxWidth().height(52.dp)
-                                    ) {
-                                        Text("Submit answer", style = MaterialTheme.typography.titleMedium)
-                                    }
-                                }
-
-                                if (challenge.hint.isNotBlank()) {
-                                    Spacer(Modifier.height(8.dp))
-                                    if (showHint) {
-                                        Surface(
-                                            color = MaterialTheme.colorScheme.tertiaryContainer,
-                                            shape = MaterialTheme.shapes.small,
+                                    } else {
+                                        OutlinedTextField(
+                                            value = userAnswer,
+                                            onValueChange = {
+                                                userAnswer = it
+                                                isError = false
+                                            },
+                                            label = { Text("Your answer") },
+                                            isError = isError,
+                                            shape = RoundedCornerShape(16.dp),
+                                            supportingText = {
+                                                if (isError) {
+                                                    Text(errorMessage, color = MaterialTheme.colorScheme.error)
+                                                }
+                                            },
+                                            keyboardOptions = KeyboardOptions(
+                                                keyboardType = if (challenge.wantsNumericKeyboard)
+                                                    KeyboardType.Number else KeyboardType.Text,
+                                                imeAction = ImeAction.Done
+                                            ),
+                                            keyboardActions = KeyboardActions(onDone = { submit(userAnswer) }),
+                                            singleLine = true,
                                             modifier = Modifier.fillMaxWidth()
+                                        )
+
+                                        Spacer(Modifier.height(12.dp))
+
+                                        Button(
+                                            onClick = { submit(userAnswer) },
+                                            shape = RoundedCornerShape(18.dp),
+                                            modifier = Modifier.fillMaxWidth().height(56.dp)
                                         ) {
                                             Text(
-                                                text = challenge.hint,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                                modifier = Modifier.padding(12.dp)
+                                                "Submit answer",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold
                                             )
                                         }
-                                    } else {
-                                        TextButton(onClick = { showHint = true }) {
-                                            Icon(
-                                                Icons.Default.Lightbulb,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Spacer(Modifier.width(6.dp))
-                                            Text("Need a hint?")
+                                    }
+
+                                    if (challenge.hint.isNotBlank()) {
+                                        Spacer(Modifier.height(10.dp))
+                                        if (showHint) {
+                                            Surface(
+                                                color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.85f),
+                                                shape = RoundedCornerShape(14.dp),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.Lightbulb,
+                                                        contentDescription = null,
+                                                        tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                    Spacer(Modifier.width(8.dp))
+                                                    Text(
+                                                        text = challenge.hint,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                                                    )
+                                                }
+                                            }
+                                        } else {
+                                            TextButton(onClick = { showHint = true }) {
+                                                Icon(
+                                                    Icons.Default.Lightbulb,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(Modifier.width(6.dp))
+                                                Text("Need a hint?")
+                                            }
                                         }
                                     }
                                 }
@@ -576,67 +784,71 @@ fun RingingScreen(
                         }
                     }
                 }
-            }
 
-            Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(14.dp))
 
-            AnimatedVisibility(visible = backNotice) {
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
-                ) {
+                AnimatedVisibility(visible = backNotice) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
+                    ) {
+                        Text(
+                            text = "No shortcuts — solve the challenge to silence. Force-closing schedules an escalated re-ring in $nextDelay min.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                }
+
+                val canSnooze = !practiceMode &&
+                    !isAllSolved &&
+                    !wakeCheck &&
+                    !isTestSimulation &&
+                    onSnooze != null &&
+                    alarm?.snoozeEnabled == true &&
+                    (alarm.snoozeMaxCount == 0 || snoozesUsed < alarm.snoozeMaxCount)
+
+                if (canSnooze) {
+                    val snoozeLabel = if (alarm.snoozeMaxCount <= 0) {
+                        "Snooze ${alarm.snoozeIntervalMinutes} min"
+                    } else {
+                        val left = (alarm.snoozeMaxCount - snoozesUsed).coerceAtLeast(1)
+                        "Snooze ${alarm.snoozeIntervalMinutes} min ($left left)"
+                    }
+                    FilledTonalButton(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onSnooze()
+                        },
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .padding(bottom = 2.dp)
+                    ) {
+                        Icon(Icons.Default.Snooze, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(snoozeLabel, fontWeight = FontWeight.SemiBold)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                }
+
+                if (!practiceMode && !isAllSolved) {
                     Text(
-                        text = "No shortcuts — solve the challenge to silence. Force-closing schedules an escalated re-ring in $nextDelay min.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        text = if (isTestSimulation)
+                            "Test simulation • Max volume & hardware key lock active"
+                        else
+                            "Dismissing without solving re-rings in $nextDelay min at harder difficulty",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(12.dp)
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
                     )
                 }
             }
-
-            val canSnooze = !practiceMode &&
-                !isAllSolved &&
-                !wakeCheck &&
-                !isTestSimulation &&
-                onSnooze != null &&
-                alarm?.snoozeEnabled == true &&
-                (alarm.snoozeMaxCount == 0 || snoozesUsed < alarm.snoozeMaxCount)
-
-            if (canSnooze) {
-                val snoozeLabel = if (alarm.snoozeMaxCount <= 0) {
-                    "Snooze ${alarm.snoozeIntervalMinutes}m"
-                } else {
-                    val left = (alarm.snoozeMaxCount - snoozesUsed).coerceAtLeast(1)
-                    "Snooze ${alarm.snoozeIntervalMinutes}m ($left left)"
-                }
-                FilledTonalButton(
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        onSnooze()
-                    },
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
-                ) {
-                    Icon(Icons.Default.Snooze, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(snoozeLabel)
-                }
-            }
-
-            if (!practiceMode && !isAllSolved) {
-                Text(
-                    text = if (isTestSimulation)
-                        "Test simulation — volume is forced to max, hardware keys are locked."
-                    else
-                        "Closing without solving re-rings in $nextDelay minutes at harder difficulty.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
         }
     }
 }
@@ -654,8 +866,11 @@ internal fun VictoryCard(
     onLaunchFocusSprint: (() -> Unit)? = null
 ) {
     val greeting = if (userName.isNotBlank()) "You're awake, $userName." else "Prefrontal cortex online."
-    ElevatedCard(
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
+        shape = RoundedCornerShape(28.dp),
+        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
+        tonalElevation = 6.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -667,65 +882,121 @@ internal fun VictoryCard(
             Text(
                 text = if (practiceMode) "Warm-up complete" else greeting,
                 style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center
             )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = "Solved in ${elapsedSeconds}s" +
-                    if (wrongAttempts == 0) " • Flawless!" else " • $wrongAttempts retry(s)",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
-            )
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "${elapsedSeconds}s",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "Solve time",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = if (wrongAttempts == 0) "Flawless" else "$wrongAttempts retry",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (wrongAttempts == 0) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Precision",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+
             Surface(
-                color = MaterialTheme.colorScheme.surfaceContainerLowest,
-                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+                shape = RoundedCornerShape(18.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = "LOCKED IN FOR TODAY",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
                         text = goal,
                         style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
                         textAlign = TextAlign.Center
                     )
                 }
             }
+
             if (wakeCheckArmed) {
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    text = "5-minute anti-relapse check armed — stay out of bed.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    text = "Wake-up check armed — stay out of bed.",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center
                 )
             }
+
             Spacer(Modifier.height(20.dp))
+
             if (!practiceMode && onLaunchFocusSprint != null) {
                 FilledTonalButton(
                     onClick = onLaunchFocusSprint,
-                    modifier = Modifier.fillMaxWidth().height(50.dp)
+                    shape = RoundedCornerShape(18.dp),
+                    modifier = Modifier.fillMaxWidth().height(52.dp)
                 ) {
                     Icon(Icons.Default.Timer, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Launch 25m Focus Sprint")
+                    Text("Launch 25m Focus Sprint", fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(Modifier.height(10.dp))
             }
             Button(
                 onClick = onDone,
-                modifier = Modifier.fillMaxWidth().height(52.dp)
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier.fillMaxWidth().height(56.dp)
             ) {
                 Text(
                     text = if (practiceMode) "Back to Insights" else "Start my day",
-                    style = MaterialTheme.typography.titleMedium
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
                 )
             }
         }

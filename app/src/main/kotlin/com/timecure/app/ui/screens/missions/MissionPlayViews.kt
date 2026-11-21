@@ -3,6 +3,7 @@ package com.timecure.app.ui.screens.missions
 import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -17,11 +18,24 @@ import android.speech.SpeechRecognizer
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -29,28 +43,31 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -66,12 +83,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.SpanStyle
@@ -81,22 +104,27 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.timecure.app.TimecureApp
 import com.timecure.app.alarm.ItemVerifyResult
 import com.timecure.app.alarm.MissionAiHelper
 import com.timecure.app.model.StepUnit
 import com.timecure.app.model.WakeMissionCatalog
 import com.timecure.app.model.WakeMissionConfig
 import com.timecure.app.model.WakeMissionType
+import com.timecure.app.ui.components.rememberReducedMotion
 import com.timecure.app.util.ImageEncoder
 import com.timecure.app.util.Permissions
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.roundToInt
+import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.random.Random
 
@@ -111,29 +139,44 @@ fun MissionPreviewDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Surface(
-            color = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(28.dp),
-            tonalElevation = 6.dp,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = RoundedCornerShape(30.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
+            tonalElevation = 8.dp,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
             Column(
                 modifier = Modifier.padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Preview • ${config.type.displayName}",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close preview")
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = CircleShape
+                    ) {
+                        Text(
+                            text = "Preview • ${config.type.displayName}",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                    Surface(
+                        onClick = onDismiss,
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        shape = CircleShape,
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Close, contentDescription = "Close preview", modifier = Modifier.size(18.dp))
+                        }
                     }
                 }
 
@@ -168,8 +211,76 @@ fun MissionPlayView(
     }
 }
 
+@Composable
+private fun MissionStageCard(
+    icon: ImageVector,
+    title: String,
+    badge: String,
+    modifier: Modifier = Modifier,
+    horizontalAlignment: Alignment.Horizontal = Alignment.CenterHorizontally,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.94f),
+        shape = RoundedCornerShape(28.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
+        tonalElevation = 4.dp,
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(22.dp),
+            horizontalAlignment = horizontalAlignment,
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = CircleShape,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                icon,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    shape = CircleShape
+                ) {
+                    Text(
+                        text = badge,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            content()
+        }
+    }
+}
+
 // =========================================================================
-// 1. HOUSEHOLD ITEM HUNT (AI Vision)
+// 1. PICTURE SCREEN — HOUSEHOLD ITEM HUNT (Camera Viewfinder + AI Vision)
 // =========================================================================
 
 @Composable
@@ -180,6 +291,7 @@ private fun ItemHuntPlayView(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
+    val reducedMotion = rememberReducedMotion()
 
     val itemPool = remember(config.selectedItems) {
         config.selectedItems.ifEmpty { WakeMissionCatalog.DEFAULT_HOUSEHOLD_ITEMS }
@@ -189,6 +301,7 @@ private fun ItemHuntPlayView(
 
     var targetItem by remember(config) { mutableStateOf(itemPool.random()) }
     var pendingCaptureUri by remember { mutableStateOf<Uri?>(null) }
+    var capturedPreview by remember { mutableStateOf<Bitmap?>(null) }
     var isVerifying by remember { mutableStateOf(false) }
     var verifyResult by remember { mutableStateOf<ItemVerifyResult?>(null) }
 
@@ -200,6 +313,7 @@ private fun ItemHuntPlayView(
             isVerifying = true
             verifyResult = null
             scope.launch {
+                capturedPreview = ImageEncoder.encodeUri(context, uri, maxDimension = 720)?.previewBitmap
                 val res = MissionAiHelper.verifyHouseholdItem(context, targetItem, uri)
                 isVerifying = false
                 verifyResult = res
@@ -210,6 +324,7 @@ private fun ItemHuntPlayView(
                         onComplete()
                     } else {
                         currentRound++
+                        capturedPreview = null
                         verifyResult = null
                         targetItem = itemPool.filter { it != targetItem }.ifEmpty { itemPool }.random()
                     }
@@ -228,103 +343,261 @@ private fun ItemHuntPlayView(
         }
     }
 
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+    val scanSweep by if (isVerifying && !reducedMotion) {
+        rememberInfiniteTransition(label = "scan_line").animateFloat(
+            initialValue = 0.08f,
+            targetValue = 0.92f,
+            animationSpec = infiniteRepeatable(tween(1100, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "scan_y"
+        )
+    } else {
+        remember { mutableStateOf(0.5f) }
+    }
+
+    MissionStageCard(
+        icon = Icons.Default.Search,
+        title = "Item Hunt",
+        badge = "$currentRound / $totalRounds"
+    ) {
+        // Target object callout banner
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "HOUSEHOLD ITEM HUNT • $currentRound / $totalRounds",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Text(
-                text = "Find & scan:",
+                text = "Find & snap:",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Surface(
                 color = MaterialTheme.colorScheme.primaryContainer,
-                shape = RoundedCornerShape(16.dp)
+                shape = CircleShape,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
             ) {
                 Text(
                     text = targetItem,
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
                 )
+            }
+        }
+
+        // Camera Viewfinder & Picture Preview Frame
+        val bracketColor = when {
+            verifyResult?.found == true -> Color(0xFF19A95B)
+            verifyResult != null -> MaterialTheme.colorScheme.error
+            else -> MaterialTheme.colorScheme.primary
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(216.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLowest),
+            contentAlignment = Alignment.Center
+        ) {
+            val preview = capturedPreview
+            if (preview != null) {
+                Image(
+                    bitmap = preview.asImageBitmap(),
+                    contentDescription = "Captured photo for $targetItem",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                0.0f to Color.Black.copy(alpha = 0.25f),
+                                0.55f to Color.Transparent,
+                                1.0f to Color.Black.copy(alpha = 0.65f)
+                            )
+                        )
+                )
+            } else {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(20.dp)
+                ) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                        shape = CircleShape,
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.CameraAlt,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Point camera cleanly at $targetItem",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        text = "AI vision verifies the real object before unlocking",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+
+            // Corner Viewfinder Brackets + Scanning Line
+            Canvas(modifier = Modifier.fillMaxSize().padding(14.dp)) {
+                val strokePx = 3.dp.toPx()
+                val corner = 22.dp.toPx()
+                val w = size.width
+                val h = size.height
+                // Top-left
+                drawLine(bracketColor, Offset(0f, corner), Offset(0f, 0f), strokePx, StrokeCap.Round)
+                drawLine(bracketColor, Offset(0f, 0f), Offset(corner, 0f), strokePx, StrokeCap.Round)
+                // Top-right
+                drawLine(bracketColor, Offset(w - corner, 0f), Offset(w, 0f), strokePx, StrokeCap.Round)
+                drawLine(bracketColor, Offset(w, 0f), Offset(w, corner), strokePx, StrokeCap.Round)
+                // Bottom-left
+                drawLine(bracketColor, Offset(0f, h - corner), Offset(0f, h), strokePx, StrokeCap.Round)
+                drawLine(bracketColor, Offset(0f, h), Offset(corner, h), strokePx, StrokeCap.Round)
+                // Bottom-right
+                drawLine(bracketColor, Offset(w - corner, h), Offset(w, h), strokePx, StrokeCap.Round)
+                drawLine(bracketColor, Offset(w, h - corner), Offset(w, h), strokePx, StrokeCap.Round)
+
+                if (isVerifying) {
+                    val y = h * scanSweep
+                    drawLine(
+                        brush = Brush.horizontalGradient(
+                            listOf(Color.Transparent, bracketColor, Color.Transparent)
+                        ),
+                        start = Offset(6.dp.toPx(), y),
+                        end = Offset(w - 6.dp.toPx(), y),
+                        strokeWidth = 2.5.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
             }
 
             if (isVerifying) {
-                CircularProgressIndicator(modifier = Modifier.size(32.dp))
-                Text("AI vision checking photo for $targetItem...", style = MaterialTheme.typography.bodySmall)
-            }
-
-            verifyResult?.let { res ->
                 Surface(
-                    color = if (res.found) MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.errorContainer,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                    shape = CircleShape
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Checking for $targetItem...",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+        }
+
+        verifyResult?.let { res ->
+            Surface(
+                color = if (res.found) Color(0xFF19A95B).copy(alpha = 0.16f)
+                else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.9f),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(
+                    1.dp,
+                    if (res.found) Color(0xFF19A95B).copy(alpha = 0.5f)
+                    else MaterialTheme.colorScheme.error.copy(alpha = 0.4f)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (res.found) Icons.Default.CheckCircle else Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = if (res.found) Color(0xFF19A95B) else MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
                         Text(
                             text = if (res.found) "Verified: ${res.detected}" else "Saw: ${res.detected}",
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            color = if (res.found) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onErrorContainer
                         )
-                        Text(res.reason, style = MaterialTheme.typography.bodySmall)
-                        if (res.offlineFallback) {
-                            Spacer(Modifier.height(6.dp))
-                            TextButton(
-                                onClick = {
-                                    if (currentRound >= totalRounds) onComplete()
-                                    else {
-                                        currentRound++
-                                        verifyResult = null
-                                        targetItem = itemPool.random()
-                                    }
+                    }
+                    Text(
+                        text = res.reason,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (res.found) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.88f)
+                    )
+                    if (res.offlineFallback) {
+                        Spacer(Modifier.height(4.dp))
+                        FilledTonalButton(
+                            onClick = {
+                                if (currentRound >= totalRounds) onComplete()
+                                else {
+                                    currentRound++
+                                    capturedPreview = null
+                                    verifyResult = null
+                                    targetItem = itemPool.random()
                                 }
-                            ) {
-                                Text("Confirm manually offline")
-                            }
+                            },
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Confirm manually offline")
                         }
                     }
                 }
             }
+        }
 
-            Button(
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    if (Permissions.hasCamera(context)) {
-                        val uri = ImageEncoder.createCameraCaptureUri(context)
-                        pendingCaptureUri = uri
-                        cameraLauncher.launch(uri)
-                    } else {
-                        permLauncher.launch(Manifest.permission.CAMERA)
-                    }
-                },
-                enabled = !isVerifying,
-                modifier = Modifier.fillMaxWidth().height(52.dp)
-            ) {
-                Icon(Icons.Default.CameraAlt, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Scan Item with Camera")
-            }
+        Button(
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                if (Permissions.hasCamera(context)) {
+                    val uri = ImageEncoder.createCameraCaptureUri(context)
+                    pendingCaptureUri = uri
+                    cameraLauncher.launch(uri)
+                } else {
+                    permLauncher.launch(Manifest.permission.CAMERA)
+                }
+            },
+            enabled = !isVerifying,
+            shape = RoundedCornerShape(18.dp),
+            modifier = Modifier.fillMaxWidth().height(56.dp)
+        ) {
+            Icon(Icons.Default.CameraAlt, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = if (verifyResult != null && verifyResult?.found == false) "Retake Photo"
+                else "Scan Item with Camera",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+        }
 
-            TextButton(
-                onClick = {
-                    verifyResult = null
-                    targetItem = itemPool.filter { it != targetItem }.ifEmpty { itemPool }.random()
-                },
-                enabled = !isVerifying
-            ) {
-                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Don't have it? Pick another item")
-            }
+        TextButton(
+            onClick = {
+                capturedPreview = null
+                verifyResult = null
+                targetItem = itemPool.filter { it != targetItem }.ifEmpty { itemPool }.random()
+            },
+            enabled = !isVerifying
+        ) {
+            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Don't have it? Swap item")
         }
     }
 }
@@ -371,7 +644,6 @@ private fun SayWordOnBeatPlayView(
         onDispose { runCatching { toneGen?.release() } }
     }
 
-    // Metronome beat loop highlighting each word cleanly
     LaunchedEffect(currentRound, wordList) {
         while (true) {
             delay(750L)
@@ -380,7 +652,6 @@ private fun SayWordOnBeatPlayView(
         }
     }
 
-    // Continuous SpeechRecognizer listener when Mic permission & service are available
     DisposableEffect(hasMic, recognitionAvailable, currentRound) {
         if (!hasMic || !recognitionAvailable) {
             return@DisposableEffect onDispose {}
@@ -441,7 +712,6 @@ private fun SayWordOnBeatPlayView(
         }
     }
 
-    // Check round completion whenever matchedIndices updates
     LaunchedEffect(matchedIndices, wordList) {
         val threshold = (wordList.size * 0.75f).toInt().coerceAtLeast(wordList.size - 1)
         if (matchedIndices.size >= threshold) {
@@ -454,33 +724,33 @@ private fun SayWordOnBeatPlayView(
         }
     }
 
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = "SAY WORDS ON BEAT • $currentRound / $totalRounds",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            if (!hasMic) {
-                Button(
-                    onClick = { micLauncher.launch(Manifest.permission.RECORD_AUDIO) },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.Mic, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Allow Microphone to Speak")
-                }
+    MissionStageCard(
+        icon = Icons.Default.Mic,
+        title = "Say Words on Beat",
+        badge = "Round $currentRound / $totalRounds"
+    ) {
+        if (!hasMic) {
+            Button(
+                onClick = { micLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth().height(52.dp)
+            ) {
+                Icon(Icons.Default.Mic, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Allow Microphone to Speak", fontWeight = FontWeight.Bold)
             }
+        }
 
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 0.8f),
+            shape = RoundedCornerShape(20.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
             FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth().padding(16.dp)
             ) {
                 wordList.forEachIndexed { idx, word ->
                     val matched = idx in matchedIndices
@@ -493,41 +763,58 @@ private fun SayWordOnBeatPlayView(
                         },
                         label = "beat_tile"
                     )
+                    val beatScale by animateFloatAsState(
+                        targetValue = if (onBeat && !matched) 1.07f else 1f,
+                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                        label = "beat_scale"
+                    )
                     Surface(
                         onClick = {
                             if (!recognitionAvailable) {
-                                // Accessibility fallback ONLY when device has no SpeechRecognizer
                                 matchedIndices = matchedIndices + idx
                             }
                         },
                         color = bg,
                         contentColor = if (matched || onBeat) Color.White else MaterialTheme.colorScheme.onSurface,
-                        shape = RoundedCornerShape(10.dp),
-                        border = if (onBeat) BorderStroke(2.dp, MaterialTheme.colorScheme.tertiary) else null
+                        shape = CircleShape,
+                        border = if (onBeat) BorderStroke(2.dp, MaterialTheme.colorScheme.tertiary) else null,
+                        modifier = Modifier.graphicsLayer {
+                            scaleX = beatScale
+                            scaleY = beatScale
+                        }
                     ) {
                         Text(
                             text = word,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                         )
                     }
                 }
             }
+        }
 
-            if (heardText.isNotBlank()) {
-                Text(
-                    text = "Heard: \"$heardText\"",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            shape = CircleShape
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Mic,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(15.dp)
                 )
-            } else {
+                Spacer(Modifier.width(6.dp))
                 Text(
-                    text = if (recognitionAvailable) "Speak each highlighted word aloud (${matchedIndices.size}/${wordList.size})"
-                    else "Speech engine unavailable — tap each word on beat to clear",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
+                    text = if (heardText.isNotBlank()) "Heard: \"$heardText\""
+                    else if (recognitionAvailable) "Speak highlighted words (${matchedIndices.size}/${wordList.size})"
+                    else "Tap each word on beat (${matchedIndices.size}/${wordList.size})",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -574,36 +861,50 @@ private fun FindColorTilesPlayView(
         }
     }
 
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+    MissionStageCard(
+        icon = Icons.Default.GridView,
+        title = "Color Memory",
+        badge = "Round $currentRound / $totalRounds"
+    ) {
+        Surface(
+            color = if (isMemorizePhase) MaterialTheme.colorScheme.tertiaryContainer
+            else MaterialTheme.colorScheme.surfaceContainerLowest,
+            shape = CircleShape
         ) {
             Text(
-                text = "FIND COLOR TILES • ROUND $currentRound / $totalRounds",
+                text = if (isMemorizePhase) "Memorize golden tiles..."
+                else "Tap ${targets.size - foundTiles.size} remaining tile(s)",
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary
+                fontWeight = FontWeight.Bold,
+                color = if (isMemorizePhase) MaterialTheme.colorScheme.onTertiaryContainer
+                else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp)
             )
-            Text(
-                text = if (isMemorizePhase) "Memorize the golden tiles!"
-                else "Tap the ${targets.size} remembered tiles (${foundTiles.size}/${targets.size})",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
-            )
+        }
 
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 0.85f),
+            shape = RoundedCornerShape(22.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 for (r in 0 until gridDim) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         for (c in 0 until gridDim) {
                             val idx = r * gridDim + c
                             val isLit = (isMemorizePhase && idx in targets) || (idx in foundTiles)
                             val isWrong = wrongTile == idx
-                            val color = when {
-                                isWrong -> MaterialTheme.colorScheme.error
-                                isLit -> Color(0xFFF3AA19)
-                                else -> MaterialTheme.colorScheme.surfaceContainerHighest
-                            }
+                            val color by animateColorAsState(
+                                targetValue = when {
+                                    isWrong -> MaterialTheme.colorScheme.error
+                                    isLit -> Color(0xFFF3AA19)
+                                    else -> MaterialTheme.colorScheme.surfaceContainerHighest
+                                },
+                                label = "tile_color_$idx"
+                            )
                             Surface(
                                 onClick = {
                                     if (isMemorizePhase || idx in foundTiles) return@Surface
@@ -621,7 +922,7 @@ private fun FindColorTilesPlayView(
                                     }
                                 },
                                 color = color,
-                                shape = RoundedCornerShape(10.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.size(if (gridDim <= 4) 56.dp else 46.dp)
                             ) {}
                         }
@@ -674,51 +975,48 @@ private fun TypingMissionPlayView(
         }
     }
 
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+    MissionStageCard(
+        icon = Icons.Default.Keyboard,
+        title = "Typing Drill",
+        badge = "$currentRound / $totalRounds",
+        horizontalAlignment = Alignment.Start
+    ) {
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 0.85f),
+            shape = RoundedCornerShape(20.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+            modifier = Modifier.fillMaxWidth()
         ) {
             Text(
-                text = "TYPING MISSION • $currentRound / $totalRounds",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = annotatedPrompt,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(14.dp)
-                )
-            }
-            OutlinedTextField(
-                value = typed,
-                onValueChange = { incoming ->
-                    // Prevent multi-char copy-paste shortcuts
-                    if (abs(incoming.length - typed.length) > 3) {
-                        pasteNotice = true
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    } else {
-                        pasteNotice = false
-                        typed = incoming
-                        if (incoming.trim().equals(targetPhrase.trim(), ignoreCase = false)) {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            if (currentRound >= totalRounds) onComplete()
-                            else currentRound++
-                        }
-                    }
-                },
-                label = { Text("Type exact sentence above") },
-                supportingText = {
-                    if (pasteNotice) Text("No copy-pasting — type manually!", color = MaterialTheme.colorScheme.error)
-                },
-                modifier = Modifier.fillMaxWidth()
+                text = annotatedPrompt,
+                style = MaterialTheme.typography.titleMedium.copy(lineHeight = 26.sp),
+                modifier = Modifier.padding(16.dp)
             )
         }
+
+        OutlinedTextField(
+            value = typed,
+            onValueChange = { incoming ->
+                if (abs(incoming.length - typed.length) > 3) {
+                    pasteNotice = true
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                } else {
+                    pasteNotice = false
+                    typed = incoming
+                    if (incoming.trim().equals(targetPhrase.trim(), ignoreCase = false)) {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        if (currentRound >= totalRounds) onComplete()
+                        else currentRound++
+                    }
+                }
+            },
+            label = { Text("Type exact sentence above") },
+            shape = RoundedCornerShape(16.dp),
+            supportingText = {
+                if (pasteNotice) Text("No copy-pasting — type manually!", color = MaterialTheme.colorScheme.error)
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
@@ -732,6 +1030,8 @@ private fun MathMissionPlayView(
     onComplete: () -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    val reducedMotion = rememberReducedMotion()
     val totalRounds = config.rounds.coerceIn(1, 10)
     var currentRound by remember { mutableIntStateOf(1) }
 
@@ -740,97 +1040,103 @@ private fun MathMissionPlayView(
     }
     var typedAns by remember(currentRound) { mutableStateOf("") }
     var isError by remember(currentRound) { mutableStateOf(false) }
+    val shakeOffset = remember { Animatable(0f) }
 
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+    fun onWrongMath() {
+        isError = true
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        if (!reducedMotion) {
+            scope.launch {
+                shakeOffset.snapTo(0f)
+                listOf(-16f, 16f, -10f, 10f, 0f).forEach { target ->
+                    shakeOffset.animateTo(target, tween(45))
+                }
+            }
+        }
+    }
+
+    fun submitMath(guess: Int?) {
+        if (guess == problem.answer) {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            isError = false
+            if (currentRound >= totalRounds) onComplete()
+            else currentRound++
+        } else {
+            onWrongMath()
+        }
+    }
+
+    MissionStageCard(
+        icon = Icons.Default.Calculate,
+        title = "Math Focus",
+        badge = "$currentRound / $totalRounds • ${config.difficultyLabel()}",
+        modifier = Modifier.offset { IntOffset(shakeOffset.value.roundToInt(), 0) }
+    ) {
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 0.85f),
+            shape = RoundedCornerShape(22.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+            modifier = Modifier.fillMaxWidth()
         ) {
             Text(
-                text = "MATH TEST • $currentRound / $totalRounds (${config.difficultyLabel()})",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Text(
                 text = problem.expression,
-                style = MaterialTheme.typography.displaySmall,
-                fontWeight = FontWeight.Bold
+                style = MaterialTheme.typography.displaySmall.copy(
+                    fontSize = 38.sp,
+                    fontWeight = FontWeight.ExtraBold
+                ),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(vertical = 22.dp, horizontal = 16.dp)
             )
+        }
 
-            if (config.difficultyLevel <= 1) {
-                // Quick-tap buttons for Very Easy & Easy
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    problem.choices.forEach { ch ->
-                        FilledTonalButton(
-                            onClick = {
-                                if (ch == problem.answer) {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    isError = false
-                                    if (currentRound >= totalRounds) onComplete()
-                                    else currentRound++
-                                } else {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    isError = true
-                                }
-                            },
-                            modifier = Modifier.weight(1f).height(52.dp)
-                        ) {
-                            Text("$ch", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        }
+        if (config.difficultyLevel <= 1) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                problem.choices.forEach { ch ->
+                    FilledTonalButton(
+                        onClick = { submitMath(ch) },
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.weight(1f).height(56.dp)
+                    ) {
+                        Text("$ch", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                 }
-            } else {
-                OutlinedTextField(
-                    value = typedAns,
-                    onValueChange = {
-                        typedAns = it
-                        isError = false
-                    },
-                    label = { Text("Answer") },
-                    isError = isError,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number,
-                        imeAction = ImeAction.Done
-                    ),
-                    keyboardActions = KeyboardActions(
-                        onDone = {
-                            if (typedAns.trim().toIntOrNull() == problem.answer) {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                if (currentRound >= totalRounds) onComplete()
-                                else currentRound++
-                            } else {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                isError = true
-                            }
-                        }
-                    ),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Button(
-                    onClick = {
-                        if (typedAns.trim().toIntOrNull() == problem.answer) {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            if (currentRound >= totalRounds) onComplete()
-                            else currentRound++
-                        } else {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            isError = true
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth().height(50.dp)
-                ) {
-                    Text("Submit Answer")
-                }
             }
+        } else {
+            OutlinedTextField(
+                value = typedAns,
+                onValueChange = {
+                    typedAns = it
+                    isError = false
+                },
+                label = { Text("Answer") },
+                isError = isError,
+                shape = RoundedCornerShape(16.dp),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(onDone = { submitMath(typedAns.trim().toIntOrNull()) }),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Button(
+                onClick = { submitMath(typedAns.trim().toIntOrNull()) },
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier.fillMaxWidth().height(56.dp)
+            ) {
+                Text("Submit Answer", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
+        }
 
-            if (isError) {
-                Text("Try again — check your math!", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            }
+        if (isError) {
+            Text(
+                "Double-check your math and try again",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall
+            )
         }
     }
 }
@@ -929,7 +1235,6 @@ private fun StepMissionPlayView(
                     val y = event.values[1]
                     val z = event.values[2]
                     val mag = sqrt(x * x + y * y + z * z)
-                    // Normal standing gravity ~9.81 m/s^2; genuine walking stride peaks > 12.1 m/s^2
                     if (mag > 12.1f && now - lastStepMs >= 380L) {
                         lastStepMs = now
                         recordStep()
@@ -952,86 +1257,110 @@ private fun StepMissionPlayView(
 
     val remainingSteps = (requiredSteps - stepsTaken).coerceAtLeast(0)
     val progress = (stepsTaken.toFloat() / requiredSteps.coerceAtLeast(1)).coerceIn(0f, 1f)
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "step_arc"
+    )
     val metersWalked = (stepsTaken / 1.35f).toInt()
 
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(22.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+    MissionStageCard(
+        icon = Icons.AutoMirrored.Filled.DirectionsWalk,
+        title = "Step Out of Bed",
+        badge = "$stepsTaken / $requiredSteps"
+    ) {
+        Text(
+            text = if (config.stepUnit == StepUnit.STEPS)
+                "Take $requiredSteps steps across the room"
+            else
+                "Walk ${config.stepTarget} meters ($requiredSteps steps)",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+
+        Box(
+            modifier = Modifier.size(188.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val cx = size.width / 2f
+                val cy = size.height / 2f
+                val outerR = size.minDimension / 2f - 4.dp.toPx()
+                val ringR = outerR - 14.dp.toPx()
+                val stroke = 11.dp.toPx()
+
+                for (i in 0 until 60) {
+                    val angle = (-90.0 + i * 6.0) * PI / 180.0
+                    val major = i % 5 == 0
+                    val tickLen = if (major) 7.dp.toPx() else 3.5.dp.toPx()
+                    val r1 = outerR - tickLen
+                    val lit = i <= (animatedProgress * 60).toInt() && animatedProgress > 0.005f
+                    drawLine(
+                        color = if (lit) primary else track.copy(alpha = 0.7f),
+                        start = Offset((cx + r1 * cos(angle)).toFloat(), (cy + r1 * sin(angle)).toFloat()),
+                        end = Offset((cx + outerR * cos(angle)).toFloat(), (cy + outerR * sin(angle)).toFloat()),
+                        strokeWidth = if (major) 2.dp.toPx() else 1.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
+
+                val tl = Offset(cx - ringR, cy - ringR)
+                drawCircle(color = track, radius = ringR, style = Stroke(stroke))
+                drawArc(
+                    color = primary,
+                    startAngle = -90f,
+                    sweepAngle = 360f * animatedProgress,
+                    useCenter = false,
+                    topLeft = tl,
+                    size = Size(ringR * 2f, ringR * 2f),
+                    style = Stroke(width = stroke, cap = StrokeCap.Round)
+                )
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    Icons.AutoMirrored.Filled.DirectionsWalk,
+                    contentDescription = null,
+                    tint = primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Text(
+                    text = "$remainingSteps",
+                    style = MaterialTheme.typography.displaySmall.copy(
+                        fontSize = 44.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                )
+                Text(
+                    text = "steps left",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerLowest,
+            shape = CircleShape
         ) {
             Text(
-                text = "STEP MISSION",
+                text = "~$metersWalked m walked",
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Text(
-                text = if (config.stepUnit == StepUnit.STEPS)
-                    "Take $requiredSteps steps out of bed"
-                else
-                    "Walk ${config.stepTarget} meters ($requiredSteps steps)",
-                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp)
             )
+        }
 
-            Box(
-                modifier = Modifier.size(164.dp),
-                contentAlignment = Alignment.Center
+        if (isPreview) {
+            FilledTonalButton(
+                onClick = { recordStep() },
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth().height(48.dp)
             ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val r = size.minDimension / 2f - 10.dp.toPx()
-                    val stroke = 11.dp.toPx()
-                    val tl = Offset(size.width / 2f - r, size.height / 2f - r)
-                    drawCircle(color = track, radius = r, style = Stroke(stroke))
-                    drawArc(
-                        color = primary,
-                        startAngle = -90f,
-                        sweepAngle = 360f * progress,
-                        useCenter = false,
-                        topLeft = tl,
-                        size = Size(r * 2f, r * 2f),
-                        style = Stroke(width = stroke, cap = StrokeCap.Round)
-                    )
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.DirectionsWalk,
-                        contentDescription = null,
-                        tint = primary,
-                        modifier = Modifier.size(26.dp)
-                    )
-                    Text(
-                        text = "$remainingSteps",
-                        style = MaterialTheme.typography.displaySmall.copy(
-                            fontSize = 42.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                    )
-                    Text(
-                        text = "steps left",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.fillMaxWidth().height(6.dp)
-            )
-            Text(
-                text = "$stepsTaken / $requiredSteps steps (~$metersWalked m walked)",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            if (isPreview) {
-                OutlinedButton(onClick = { recordStep() }) {
-                    Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Simulate +1 step (Preview)")
-                }
+                Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Simulate +1 Step (Preview)")
             }
         }
     }
